@@ -1,0 +1,119 @@
+name: "code-review-pipeline"
+description: "Multi-agent code review with parallel analysis and aggregation"
+
+inputs:
+  files:
+    description: "Files to review (glob pattern)"
+    default: "src/**/*.go"
+  severity_filter:
+    description: "Minimum severity level"
+    default: "MEDIUM"
+
+config:
+  model: "gpt-4o"
+  audit_dir: ".workflow-runs"
+  audit_retention: 10
+  max_concurrency: 3
+  shared_memory:
+    enabled: true
+    inject_into_prompt: true
+    initial_content: |
+      # Shared Review Context
+      Review session started. Coordinate findings here.
+
+agents:
+  security-reviewer:
+    file: "../agents/security-reviewer.agent.md"
+  performance-reviewer:
+    file: "../agents/performance-reviewer.agent.md"
+  style-reviewer:
+    inline:
+      description: "Reviews code style and naming conventions"
+      prompt: |
+        You are a code style reviewer. Check naming conventions,
+        formatting, readability, and Go idioms. Cite file paths
+        and line numbers. Rate issues: HIGH, MEDIUM, LOW.
+      tools: ["grep", "glob", "view"]
+  aggregator:
+    file: "../agents/aggregator.agent.md"
+  decision-maker:
+    inline:
+      description: "Makes approval decisions based on review results"
+      prompt: |
+        You analyze review results and make a go/no-go decision.
+        Output exactly one of: APPROVE, REQUEST_CHANGES, or NEEDS_DISCUSSION.
+        Follow your output with a brief explanation.
+
+steps:
+  - id: analyze
+    agent: security-reviewer
+    prompt: "Analyze the codebase structure for files matching: {{inputs.files}}"
+
+  - id: review-security
+    agent: security-reviewer
+    prompt: |
+      Review this code for security issues.
+      Focus on severity >= {{inputs.severity_filter}}.
+      Previous analysis: {{steps.analyze.output}}
+    depends_on: [analyze]
+
+  - id: review-performance
+    agent: performance-reviewer
+    prompt: |
+      Review this code for performance issues.
+      Previous analysis: {{steps.analyze.output}}
+    depends_on: [analyze]
+
+  - id: review-style
+    agent: style-reviewer
+    prompt: |
+      Review this code for style issues.
+      Previous analysis: {{steps.analyze.output}}
+    depends_on: [analyze]
+
+  - id: aggregate
+    agent: aggregator
+    prompt: |
+      Combine these review results into a unified report:
+
+      ## Security Review
+      {{steps.review-security.output}}
+
+      ## Performance Review
+      {{steps.review-performance.output}}
+
+      ## Style Review
+      {{steps.review-style.output}}
+    depends_on: [review-security, review-performance, review-style]
+
+  - id: decide
+    agent: decision-maker
+    prompt: |
+      Based on this review report, should this code be approved?
+      {{steps.aggregate.output}}
+    depends_on: [aggregate]
+
+  - id: approve-action
+    agent: aggregator
+    prompt: "Generate a concise approval summary suitable for a PR comment."
+    depends_on: [decide]
+    condition:
+      step: decide
+      contains: "APPROVE"
+
+  - id: changes-action
+    agent: aggregator
+    prompt: |
+      Generate a detailed list of required changes based on:
+      {{steps.aggregate.output}}
+    depends_on: [decide]
+    condition:
+      step: decide
+      contains: "REQUEST_CHANGES"
+
+output:
+  steps: [approve-action, changes-action, aggregate]
+  format: markdown
+  truncate:
+    strategy: chars
+    limit: 2000

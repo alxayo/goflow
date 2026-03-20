@@ -1,0 +1,46 @@
+name: "simple-sequential-review"
+description: "Three-step sequential code review pipeline"
+
+inputs:
+  files:
+    description: "Files to review"
+    default: "*.go"
+
+config:
+  model: "gpt-4o"
+  audit_dir: ".workflow-runs"
+  audit_retention: 5
+
+agents:
+  security-reviewer:
+    file: "../agents/security-reviewer.agent.md"
+  performance-reviewer:
+    file: "../agents/performance-reviewer.agent.md"
+  aggregator:
+    file: "../agents/aggregator.agent.md"
+
+steps:
+  - id: security-review
+    agent: security-reviewer
+    prompt: |
+      Review the following files for security vulnerabilities: {{inputs.files}}
+      Focus on OWASP Top 10 issues.
+
+  - id: perf-review
+    agent: performance-reviewer
+    prompt: |
+      Review code for performance issues.
+      Prior security findings: {{steps.security-review.output}}
+    depends_on: [security-review]
+
+  - id: summary
+    agent: aggregator
+    prompt: |
+      Summarize all review findings:
+      Security: {{steps.security-review.output}}
+      Performance: {{steps.perf-review.output}}
+    depends_on: [perf-review]
+
+output:
+  steps: [summary]
+  format: markdown
