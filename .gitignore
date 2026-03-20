@@ -1,0 +1,17 @@
+# Binaries
+workflow-runner
+*.exe
+
+# IDE
+.idea/
+*.swp
+
+# Test/build artifacts
+coverage.out
+*.test
+
+# Audit runs (local only)
+.workflow-runs/
+
+# OS
+.DS_Store
