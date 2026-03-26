@@ -221,6 +221,37 @@ steps:
 				}
 			},
 		},
+		{
+			name: "step with model override",
+			yaml: `
+name: model-test
+steps:
+  - id: s1
+    agent: a
+    prompt: "analyze"
+    model: claude-sonnet-4.5
+`,
+			check: func(t *testing.T, wf *Workflow) {
+				if wf.Steps[0].Model != "claude-sonnet-4.5" {
+					t.Errorf("step model = %q, want %q", wf.Steps[0].Model, "claude-sonnet-4.5")
+				}
+			},
+		},
+		{
+			name: "step without model defaults to empty",
+			yaml: `
+name: no-model
+steps:
+  - id: s1
+    agent: a
+    prompt: "work"
+`,
+			check: func(t *testing.T, wf *Workflow) {
+				if wf.Steps[0].Model != "" {
+					t.Errorf("step model should be empty, got %q", wf.Steps[0].Model)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {

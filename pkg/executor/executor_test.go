@@ -399,8 +399,8 @@ func TestExecute_ToolsPassedToSession(t *testing.T) {
 	if len(cfg.Tools) != 2 || cfg.Tools[0] != "grep" || cfg.Tools[1] != "view" {
 		t.Errorf("tools = %v, want [grep view]", cfg.Tools)
 	}
-	if cfg.Model != "gpt-5" {
-		t.Errorf("model = %q, want %q", cfg.Model, "gpt-5")
+	if len(cfg.Models) != 1 || cfg.Models[0] != "gpt-5" {
+		t.Errorf("models = %v, want [gpt-5]", cfg.Models)
 	}
 }
 
@@ -466,4 +466,169 @@ func TestExecute_NoToolsAllowsAll(t *testing.T) {
 	if cfg.Tools != nil {
 		t.Errorf("tools should be nil for unrestricted agent, got %v", cfg.Tools)
 	}
+}
+
+// TestExecute_StepModelOverridesAgent verifies that step-level model takes
+// highest priority over agent's model.
+func TestExecute_StepModelOverridesAgent(t *testing.T) {
+	exec, mock := newTestExecutor(map[string]string{
+		"Analyze": "done",
+	})
+
+	agent := &agents.Agent{
+		Name:   "test-agent",
+		Prompt: "Instructions",
+		Model:  agents.ModelSpec{Models: []string{"gpt-4", "gpt-3.5"}},
+	}
+
+	step := workflow.Step{
+		ID:     "analyze",
+		Agent:  "test-agent",
+		Prompt: "Analyze code",
+		Model:  "claude-sonnet-4.5", // Step override
+	}
+
+	_, err := exec.Execute(context.Background(), step, agent, nil, nil, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	mock.mu.Lock()
+	cfg := mock.LastConfig
+	mock.mu.Unlock()
+
+	// Step model should be first, then agent models.
+	want := []string{"claude-sonnet-4.5", "gpt-4", "gpt-3.5"}
+	if !slicesEqual(cfg.Models, want) {
+		t.Errorf("models = %v, want %v", cfg.Models, want)
+	}
+}
+
+// TestExecute_WorkflowDefaultModelFallback verifies that the workflow-level
+// default model is used as the last fallback.
+func TestExecute_WorkflowDefaultModelFallback(t *testing.T) {
+	mock := &MockSessionExecutor{
+		Responses: map[string]string{"Analyze": "done"},
+	}
+	exec := &StepExecutor{
+		SDK:          mock,
+		DefaultModel: "workflow-default-model", // Workflow-level default
+	}
+
+	agent := &agents.Agent{
+		Name:   "no-model-agent",
+		Prompt: "Instructions",
+		Model:  agents.ModelSpec{}, // No model specified
+	}
+
+	step := workflow.Step{
+		ID:     "analyze",
+		Agent:  "no-model-agent",
+		Prompt: "Analyze code",
+		// No step model either
+	}
+
+	_, err := exec.Execute(context.Background(), step, agent, nil, nil, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	mock.mu.Lock()
+	cfg := mock.LastConfig
+	mock.mu.Unlock()
+
+	// Only the workflow default should be in the list.
+	want := []string{"workflow-default-model"}
+	if !slicesEqual(cfg.Models, want) {
+		t.Errorf("models = %v, want %v", cfg.Models, want)
+	}
+}
+
+// TestExecute_ModelDeduplication verifies that duplicate models are removed
+// while preserving priority order.
+func TestExecute_ModelDeduplication(t *testing.T) {
+	mock := &MockSessionExecutor{
+		Responses: map[string]string{"Analyze": "done"},
+	}
+	exec := &StepExecutor{
+		SDK:          mock,
+		DefaultModel: "gpt-5", // Same as agent's first model — should be deduped
+	}
+
+	agent := &agents.Agent{
+		Name:   "test-agent",
+		Prompt: "Instructions",
+		Model:  agents.ModelSpec{Models: []string{"gpt-5", "gpt-4"}},
+	}
+
+	step := workflow.Step{
+		ID:     "analyze",
+		Agent:  "test-agent",
+		Prompt: "Analyze code",
+		Model:  "gpt-4", // Same as agent's second model — should be deduped
+	}
+
+	_, err := exec.Execute(context.Background(), step, agent, nil, nil, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	mock.mu.Lock()
+	cfg := mock.LastConfig
+	mock.mu.Unlock()
+
+	// Order: step (gpt-4), agent (gpt-5, gpt-4 deduped), workflow (gpt-5 deduped)
+	// Final: [gpt-4, gpt-5]
+	want := []string{"gpt-4", "gpt-5"}
+	if !slicesEqual(cfg.Models, want) {
+		t.Errorf("models = %v, want %v", cfg.Models, want)
+	}
+}
+
+// TestExecute_EmptyModelsWhenNoneSpecified verifies that an empty models list
+// is passed when no model is specified anywhere.
+func TestExecute_EmptyModelsWhenNoneSpecified(t *testing.T) {
+	exec, mock := newTestExecutor(map[string]string{
+		"Analyze": "done",
+	})
+	// newTestExecutor creates executor with no DefaultModel.
+
+	agent := &agents.Agent{
+		Name:   "no-model-agent",
+		Prompt: "Instructions",
+		Model:  agents.ModelSpec{}, // No model
+	}
+
+	step := workflow.Step{
+		ID:     "analyze",
+		Agent:  "no-model-agent",
+		Prompt: "Analyze code",
+	}
+
+	_, err := exec.Execute(context.Background(), step, agent, nil, nil, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	mock.mu.Lock()
+	cfg := mock.LastConfig
+	mock.mu.Unlock()
+
+	// Models list should be empty — CLI will pick the default.
+	if len(cfg.Models) != 0 {
+		t.Errorf("models = %v, want empty", cfg.Models)
+	}
+}
+
+// slicesEqual compares two string slices for equality.
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
