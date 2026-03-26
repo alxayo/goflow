@@ -182,6 +182,45 @@ steps:
 			yaml:    `name: [broken`,
 			wantErr: "parsing workflow YAML",
 		},
+		{
+			name: "step with extra_dirs",
+			yaml: `
+name: scoped
+steps:
+  - id: s1
+    agent: a
+    prompt: "do work"
+    extra_dirs:
+      - "./extra/security"
+      - "./extra/common"
+`,
+			check: func(t *testing.T, wf *Workflow) {
+				if len(wf.Steps[0].ExtraDirs) != 2 {
+					t.Fatalf("extra_dirs count = %d, want 2", len(wf.Steps[0].ExtraDirs))
+				}
+				if wf.Steps[0].ExtraDirs[0] != "./extra/security" {
+					t.Errorf("extra_dirs[0] = %q", wf.Steps[0].ExtraDirs[0])
+				}
+				if wf.Steps[0].ExtraDirs[1] != "./extra/common" {
+					t.Errorf("extra_dirs[1] = %q", wf.Steps[0].ExtraDirs[1])
+				}
+			},
+		},
+		{
+			name: "step without extra_dirs defaults to nil",
+			yaml: `
+name: no-extra
+steps:
+  - id: s1
+    agent: a
+    prompt: "do stuff"
+`,
+			check: func(t *testing.T, wf *Workflow) {
+				if wf.Steps[0].ExtraDirs != nil {
+					t.Errorf("extra_dirs should be nil, got %v", wf.Steps[0].ExtraDirs)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {

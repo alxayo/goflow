@@ -37,6 +37,9 @@ type MockSessionExecutor struct {
 	// SessionsCreated tracks how many sessions were created (for assertions).
 	SessionsCreated atomic.Int32
 
+	// LastConfig records the most recent SessionConfig passed to CreateSession.
+	LastConfig SessionConfig
+
 	mu sync.Mutex
 }
 
@@ -44,6 +47,9 @@ func (m *MockSessionExecutor) CreateSession(ctx context.Context, cfg SessionConf
 	if m.CreateErr != nil {
 		return nil, m.CreateErr
 	}
+	m.mu.Lock()
+	m.LastConfig = cfg
+	m.mu.Unlock()
 	m.SessionsCreated.Add(1)
 	return &MockSession{
 		id:             fmt.Sprintf("mock-session-%d", m.SessionsCreated.Load()),

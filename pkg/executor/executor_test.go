@@ -365,3 +365,105 @@ func TestExecute_AgentWithNoModel(t *testing.T) {
 		t.Errorf("want status=completed, got %s", result.Status)
 	}
 }
+
+func TestExecute_ToolsPassedToSession(t *testing.T) {
+	exec, mock := newTestExecutor(map[string]string{
+		"Scan": "scan complete",
+	})
+
+	agent := &agents.Agent{
+		Name:   "restricted-agent",
+		Prompt: "You scan code.",
+		Tools:  []string{"grep", "view"},
+		Model:  agents.ModelSpec{Models: []string{"gpt-5"}},
+	}
+
+	step := workflow.Step{
+		ID:     "scan",
+		Agent:  "restricted-agent",
+		Prompt: "Scan the code",
+	}
+
+	result, err := exec.Execute(context.Background(), step, agent, nil, nil, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Status != workflow.StepStatusCompleted {
+		t.Errorf("want status=completed, got %s", result.Status)
+	}
+
+	mock.mu.Lock()
+	cfg := mock.LastConfig
+	mock.mu.Unlock()
+
+	if len(cfg.Tools) != 2 || cfg.Tools[0] != "grep" || cfg.Tools[1] != "view" {
+		t.Errorf("tools = %v, want [grep view]", cfg.Tools)
+	}
+	if cfg.Model != "gpt-5" {
+		t.Errorf("model = %q, want %q", cfg.Model, "gpt-5")
+	}
+}
+
+func TestExecute_ExtraDirsPassedToSession(t *testing.T) {
+	exec, mock := newTestExecutor(map[string]string{
+		"Analyze": "analysis done",
+	})
+
+	step := workflow.Step{
+		ID:        "analyze",
+		Agent:     "test-agent",
+		Prompt:    "Analyze the code",
+		ExtraDirs: []string{"./extra/security", "./extra/common"},
+	}
+
+	result, err := exec.Execute(context.Background(), step, testAgent(), nil, nil, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Status != workflow.StepStatusCompleted {
+		t.Errorf("want status=completed, got %s", result.Status)
+	}
+
+	mock.mu.Lock()
+	cfg := mock.LastConfig
+	mock.mu.Unlock()
+
+	if len(cfg.ExtraDirs) != 2 {
+		t.Fatalf("extra_dirs count = %d, want 2", len(cfg.ExtraDirs))
+	}
+	if cfg.ExtraDirs[0] != "./extra/security" || cfg.ExtraDirs[1] != "./extra/common" {
+		t.Errorf("extra_dirs = %v, want [./extra/security ./extra/common]", cfg.ExtraDirs)
+	}
+}
+
+func TestExecute_NoToolsAllowsAll(t *testing.T) {
+	exec, mock := newTestExecutor(map[string]string{
+		"Work": "done",
+	})
+
+	agent := &agents.Agent{
+		Name:   "unrestricted-agent",
+		Prompt: "You do everything.",
+		Tools:  nil, // No tool restriction — all tools available.
+		Model:  agents.ModelSpec{Models: []string{"gpt-5"}},
+	}
+
+	step := workflow.Step{
+		ID:     "work",
+		Agent:  "unrestricted-agent",
+		Prompt: "Work on it",
+	}
+
+	_, err := exec.Execute(context.Background(), step, agent, nil, nil, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	mock.mu.Lock()
+	cfg := mock.LastConfig
+	mock.mu.Unlock()
+
+	if cfg.Tools != nil {
+		t.Errorf("tools should be nil for unrestricted agent, got %v", cfg.Tools)
+	}
+}
