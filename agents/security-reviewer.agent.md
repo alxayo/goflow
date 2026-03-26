@@ -2,7 +2,7 @@
 name: security-reviewer
 description: Reviews code for OWASP Top 10 vulnerabilities
 tools:
-  - grep
+  - semantic_search
   - glob
   - view
 model: gpt-4o
