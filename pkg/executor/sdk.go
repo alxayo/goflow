@@ -28,9 +28,14 @@ type Session interface {
 // SessionConfig holds the configuration for creating a new SDK session.
 type SessionConfig struct {
 	SystemPrompt string
-	Model        string
-	Tools        []string
-	MCPServers   map[string]interface{}
+
+	// Models is a priority-ordered list of model names to try. The executor
+	// attempts each model in order; if unavailable, it falls back to the next.
+	// If all models fail or the list is empty, the CLI picks the default model.
+	Models []string
+
+	Tools      []string
+	MCPServers map[string]interface{}
 
 	// ExtraDirs lists directories whose agents, skills, MCP servers,
 	// instructions, and hooks are added to CLI discovery for this session.

@@ -76,6 +76,11 @@ type Step struct {
 	RetryCount int        `yaml:"retry_count"`
 	Timeout    string     `yaml:"timeout"`
 
+	// Model overrides the agent's model for this step only. If empty,
+	// the agent's model is used; if the agent has no model, the workflow's
+	// config.model is used; if that's also empty, the CLI picks the default.
+	Model string `yaml:"model"`
+
 	// ExtraDirs lists directories whose agents, skills, MCP servers,
 	// instructions, and hooks should be discovered and added for this
 	// step only, extending the CLI baseline.
