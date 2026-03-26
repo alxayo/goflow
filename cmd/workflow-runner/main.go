@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -111,13 +112,23 @@ func run() int {
 	}
 
 	// 4. Resolve agents.
+	// workspaceDir is used for agent discovery in standard locations.
 	workspaceDir, err := os.Getwd()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: getting working directory: %v\n", err)
 		return 1
 	}
 
-	resolvedAgents, err := agents.ResolveAgents(wf, workspaceDir)
+	// workflowDir is used for resolving relative agent file paths.
+	// This allows workflows to reference agents relative to their own location.
+	absWorkflowPath, err := filepath.Abs(*workflowPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: resolving workflow path: %v\n", err)
+		return 1
+	}
+	workflowDir := filepath.Dir(absWorkflowPath)
+
+	resolvedAgents, err := agents.ResolveAgents(wf, workspaceDir, workflowDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		return 1

@@ -250,15 +250,14 @@ workflow-runner run --workflow pipeline.yaml \
   --inputs severity_filter='HIGH'
 ```
 
-### Running from the Examples Directory
+### Running Example Workflows
 
-The example workflows use relative agent paths (`../agents/...`), so you should run them from the `examples/` directory:
+The example workflows use relative agent paths (`../agents/...`) which resolve relative to the workflow file's location. You can run them from anywhere:
 
 ```bash
-cd examples
-go run ../cmd/workflow-runner run \
-  --workflow simple-sequential.yaml \
-  --inputs files='../pkg/workflow/*.go' \
+go run ./cmd/workflow-runner run \
+  --workflow examples/simple-sequential.yaml \
+  --inputs files='pkg/workflow/*.go' \
   --verbose
 ```
 
@@ -364,7 +363,7 @@ agents:
     file: "../agents/security-reviewer.agent.md"
 ```
 
-The file path is relative to the working directory. The agent's name in the map (`security-reviewer`) is used for referencing in steps.
+The file path is relative to the workflow file's location. For example, if your workflow is at `examples/my-workflow.yaml` and contains `file: "../agents/helper.agent.md"`, it resolves to `agents/helper.agent.md`. The agent's name in the map (`security-reviewer`) is used for referencing in steps.
 
 #### Inline agent
 
@@ -1320,7 +1319,7 @@ If not installed, use `--mock` for testing or install the Copilot CLI.
 ### "agent X not found"
 
 - Check that the agent name in `steps.*.agent` exactly matches a key in the `agents` map.
-- If using `file:`, verify the path is correct relative to the working directory.
+- If using `file:`, verify the path is correct relative to the workflow file's location.
 - Run with `--verbose` to see how many agents were resolved.
 
 ### "cycle detected among steps"

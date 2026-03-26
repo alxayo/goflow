@@ -95,7 +95,7 @@ output:
 	}
 
 	// 4. Resolve agents using inline definitions.
-	resolvedAgents, err := agents.ResolveAgents(wf, tmpDir)
+	resolvedAgents, err := agents.ResolveAgents(wf, tmpDir, tmpDir)
 	if err != nil {
 		t.Fatalf("ResolveAgents: %v", err)
 	}
@@ -304,7 +304,7 @@ output:
 		t.Fatalf("ValidateWorkflow: %v", err)
 	}
 
-	resolvedAgents, err := agents.ResolveAgents(wf, tmpDir)
+	resolvedAgents, err := agents.ResolveAgents(wf, tmpDir, tmpDir)
 	if err != nil {
 		t.Fatalf("ResolveAgents: %v", err)
 	}
@@ -568,7 +568,7 @@ output:
 		t.Fatalf("ValidateWorkflow: %v", err)
 	}
 
-	resolvedAgents, err := agents.ResolveAgents(wf, tmpDir)
+	resolvedAgents, err := agents.ResolveAgents(wf, tmpDir, tmpDir)
 	if err != nil {
 		t.Fatalf("ResolveAgents: %v", err)
 	}
@@ -742,7 +742,7 @@ output:
 		t.Fatalf("ValidateWorkflow: %v", err)
 	}
 
-	resolvedAgents, err := agents.ResolveAgents(wf, tmpDir)
+	resolvedAgents, err := agents.ResolveAgents(wf, tmpDir, tmpDir)
 	if err != nil {
 		t.Fatalf("ResolveAgents: %v", err)
 	}
@@ -924,7 +924,7 @@ output:
 		t.Fatalf("ValidateWorkflow: %v", err)
 	}
 
-	resolvedAgents, err := agents.ResolveAgents(wf, tmpDir)
+	resolvedAgents, err := agents.ResolveAgents(wf, tmpDir, tmpDir)
 	if err != nil {
 		t.Fatalf("ResolveAgents: %v", err)
 	}

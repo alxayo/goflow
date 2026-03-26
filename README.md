@@ -11,47 +11,40 @@ This project includes example workflow files in the examples folder.
 From the repository root:
 
 ```bash
-cd examples
-go run ../cmd/workflow-runner run \
-	--workflow simple-sequential.yaml \
-	--inputs files='../pkg/workflow/*.go' \
+go run ./cmd/workflow-runner run \
+	--workflow examples/simple-sequential.yaml \
+	--inputs files='pkg/workflow/*.go' \
 	--verbose
 ```
 
-Important:
-
-- Run this command from the examples directory. The file examples/simple-sequential.yaml uses relative agent paths like ../agents/..., and those paths resolve correctly from examples.
-- Change the value of --inputs files=... to target any folder you want to review.
+Note: Relative agent paths in workflow files (like `../agents/security-reviewer.agent.md`) resolve relative to the workflow file's location, so you can run the command from any directory.
 
 ### 2. Examples for specific folders
 
 Review only workflow package files:
 
 ```bash
-cd examples
-go run ../cmd/workflow-runner run \
-	--workflow simple-sequential.yaml \
-	--inputs files='../pkg/workflow/*.go' \
+go run ./cmd/workflow-runner run \
+	--workflow examples/simple-sequential.yaml \
+	--inputs files='pkg/workflow/*.go' \
 	--verbose
 ```
 
 Review only executor package files:
 
 ```bash
-cd examples
-go run ../cmd/workflow-runner run \
-	--workflow simple-sequential.yaml \
-	--inputs files='../pkg/executor/*.go' \
+go run ./cmd/workflow-runner run \
+	--workflow examples/simple-sequential.yaml \
+	--inputs files='pkg/executor/*.go' \
 	--verbose
 ```
 
 Review all Go files in the repository:
 
 ```bash
-cd examples
-go run ../cmd/workflow-runner run \
-	--workflow simple-sequential.yaml \
-	--inputs files='../**/*.go' \
+go run ./cmd/workflow-runner run \
+	--workflow examples/simple-sequential.yaml \
+	--inputs files='**/*.go' \
 	--verbose
 ```
 
@@ -63,20 +56,18 @@ go run ../cmd/workflow-runner run \
 Mock example:
 
 ```bash
-cd examples
-go run ../cmd/workflow-runner run \
-	--workflow simple-sequential.yaml \
-	--inputs files='../pkg/workflow/*.go' \
+go run ./cmd/workflow-runner run \
+	--workflow examples/simple-sequential.yaml \
+	--inputs files='pkg/workflow/*.go' \
 	--mock \
 	--verbose
 ```
 
 ### 4. Find run artifacts
 
-Each run writes audit artifacts under examples/.workflow-runs.
+Each run writes audit artifacts under the workflow's audit directory (defaults to `.workflow-runs` in the current working directory).
 
 ```bash
-cd examples
 ls -1 .workflow-runs | tail -n 5
 ```
 

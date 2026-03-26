@@ -709,8 +709,14 @@ func DiscoverAgents(workspaceDir string, extraPaths []string) (map[string]*Agent
 
 // ResolveAgents loads agents from explicit workflow YAML refs and merges them
 // with discovered agents. Explicit refs always take highest priority.
+//
+// workspaceDir is used for agent discovery in standard locations.
+// workflowDir is used for resolving relative file paths in explicit agent refs.
+// This design allows workflows to reference agent files relative to their own
+// location, making them portable across directories.
+//
 // Returns an error if any workflow step references an agent that cannot be found.
-func ResolveAgents(wf *Workflow, workspaceDir string) (map[string]*Agent, error)
+func ResolveAgents(wf *Workflow, workspaceDir, workflowDir string) (map[string]*Agent, error)
 ```
 
 **Key behavior:**
@@ -718,6 +724,7 @@ func ResolveAgents(wf *Workflow, workspaceDir string) (map[string]*Agent, error)
 - Tie-breaker: `.github/agents/foo.agent.md` wins over `.claude/agents/foo.md`
 - Agent name derived from `name` frontmatter field, falling back to filename stem
 - Inline agents from workflow YAML are also resolved (not from files)
+- **Relative agent file paths** in workflow YAML resolve against the workflow file's directory, not the current working directory
 
 **Test cases:**
 - Discovery from `.github/agents/` directory
@@ -727,6 +734,7 @@ func ResolveAgents(wf *Workflow, workspaceDir string) (map[string]*Agent, error)
 - Inline agent resolved without file
 - Missing agent referenced by step → error
 - Empty directories → no agents found (not an error)
+- Relative file path resolves against workflow directory
 
 ---
 

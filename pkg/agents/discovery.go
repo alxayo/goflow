@@ -96,8 +96,13 @@ func scanDir(dir string, claude bool, agents map[string]*Agent) error {
 // ResolveAgents loads agents from explicit workflow YAML refs and merges them
 // with discovered agents. Explicit refs always take highest priority.
 // Inline agents are also resolved (created from InlineAgent definitions).
+//
+// workspaceDir is used for agent discovery in standard locations (.github/agents/, etc.).
+// workflowDir is used for resolving relative file paths in explicit agent refs.
+// This allows workflows to use paths relative to their own location, not the CWD.
+//
 // Returns error if a step references an agent that cannot be found.
-func ResolveAgents(wf *workflow.Workflow, workspaceDir string) (map[string]*Agent, error) {
+func ResolveAgents(wf *workflow.Workflow, workspaceDir, workflowDir string) (map[string]*Agent, error) {
 	// Discover agents from standard locations.
 	discovered, err := DiscoverAgents(workspaceDir, wf.Config.AgentSearchPaths)
 	if err != nil {
@@ -106,11 +111,13 @@ func ResolveAgents(wf *workflow.Workflow, workspaceDir string) (map[string]*Agen
 
 	// Load explicit file refs and inline agents from workflow YAML.
 	// These take highest priority and overwrite discovered agents.
+	// Relative file paths are resolved against workflowDir (the directory
+	// containing the workflow file), not the CWD.
 	for name, ref := range wf.Agents {
 		if ref.File != "" {
 			path := ref.File
 			if !filepath.IsAbs(path) {
-				path = filepath.Join(workspaceDir, path)
+				path = filepath.Join(workflowDir, path)
 			}
 			agent, err := LoadAgentFile(path)
 			if err != nil {

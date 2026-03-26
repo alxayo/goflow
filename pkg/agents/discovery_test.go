@@ -212,7 +212,8 @@ Explicit.
 		},
 	}
 
-	agents, err := ResolveAgents(wf, workspace)
+	// workflowDir is same as workspace for this test.
+	agents, err := ResolveAgents(wf, workspace, workspace)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -238,7 +239,7 @@ func TestResolveAgents_InlineAgent(t *testing.T) {
 		},
 	}
 
-	agents, err := ResolveAgents(wf, workspace)
+	agents, err := ResolveAgents(wf, workspace, workspace)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -259,7 +260,7 @@ func TestResolveAgents_MissingAgentError(t *testing.T) {
 		},
 	}
 
-	_, err := ResolveAgents(wf, workspace)
+	_, err := ResolveAgents(wf, workspace, workspace)
 	if err == nil {
 		t.Fatal("expected error for missing agent reference")
 	}
@@ -270,6 +271,7 @@ func TestResolveAgents_MissingAgentError(t *testing.T) {
 
 func TestResolveAgents_RelativeFilePath(t *testing.T) {
 	workspace := t.TempDir()
+	// Agent file is at workspace/agents/custom.agent.md
 	writeAgentFile(t, workspace, "agents/custom.agent.md", `---
 name: custom
 ---
@@ -286,11 +288,49 @@ Custom prompt.
 		},
 	}
 
-	agents, err := ResolveAgents(wf, workspace)
+	// Relative file path is resolved against workflowDir.
+	agents, err := ResolveAgents(wf, workspace, workspace)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	assertEqual(t, "Name", agents["custom"].Name, "custom")
+}
+
+// TestResolveAgents_RelativePathFromWorkflowDir verifies that relative agent
+// file paths are resolved against the workflow directory, not the workspace.
+func TestResolveAgents_RelativePathFromWorkflowDir(t *testing.T) {
+	workspace := t.TempDir()
+	// Create a workflow subdirectory that's different from workspace.
+	workflowDir := filepath.Join(workspace, "workflows")
+	os.MkdirAll(workflowDir, 0755)
+
+	// Agent file is at workspace/workflows/agents/custom.agent.md
+	// (relative to workflowDir, not workspace).
+	writeAgentFile(t, workflowDir, "agents/custom.agent.md", `---
+name: custom
+description: workflow-relative agent
+---
+
+Custom prompt from workflow dir.
+`)
+
+	wf := &workflow.Workflow{
+		Agents: map[string]workflow.AgentRef{
+			// This relative path should resolve against workflowDir.
+			"custom": {File: "agents/custom.agent.md"},
+		},
+		Steps: []workflow.Step{
+			{ID: "step1", Agent: "custom"},
+		},
+	}
+
+	// Resolve with different workspace and workflowDir.
+	agents, err := ResolveAgents(wf, workspace, workflowDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertEqual(t, "Name", agents["custom"].Name, "custom")
+	assertEqual(t, "Description", agents["custom"].Description, "workflow-relative agent")
 }
 
 // agentKeys returns a slice of agent map keys for debugging.

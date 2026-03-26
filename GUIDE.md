@@ -428,7 +428,7 @@ agents:
     file: "./agents/code-reviewer.agent.md"
 ```
 
-The path is relative to the working directory where you run the command. You can also mix file-based and inline agents:
+The path is relative to the workflow file's location, not the current working directory. This allows workflows to be portable and runnable from any directory. You can also mix file-based and inline agents:
 
 ```yaml
 agents:
@@ -1431,11 +1431,10 @@ workflow-runner run [options]
 # Custom audit directory
 ./workflow-runner run --workflow pipeline.yaml --audit-dir ./my-audit-logs
 
-# Run from the examples directory (relative agent paths)
-cd examples
-go run ../cmd/workflow-runner run \
-  --workflow simple-sequential.yaml \
-  --inputs files='../pkg/workflow/*.go' \
+# Run example workflow from repository root (agent paths resolve relative to workflow file)
+go run ./cmd/workflow-runner run \
+  --workflow examples/simple-sequential.yaml \
+  --inputs files='pkg/workflow/*.go' \
   --verbose
 ```
 
@@ -1450,7 +1449,7 @@ The real executor requires the `copilot` binary on `$PATH`. Verify with `which c
 ### "agent X not found"
 
 - Check that the agent name in `steps.*.agent` exactly matches a key in the `agents` map.
-- If using `file:`, verify the path is correct relative to the working directory.
+- If using `file:`, verify the path is correct relative to the workflow file's location.
 - Run with `--verbose` to see how many agents were resolved.
 
 ### "cycle detected among steps"
