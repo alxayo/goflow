@@ -46,15 +46,45 @@ type CopilotCLISession struct {
 }
 
 // Send executes a single non-interactive Copilot CLI prompt.
+// If multiple models are configured, it tries each in order until one succeeds.
 func (s *CopilotCLISession) Send(ctx context.Context, prompt string) (string, error) {
 	finalPrompt := composePrompt(s.cfg.SystemPrompt, prompt)
 
+	// Try each model in the priority list, then fall back to CLI default.
+	modelsToTry := append([]string{}, s.cfg.Models...)
+	modelsToTry = append(modelsToTry, "") // Empty string = CLI default model
+
+	var lastErr error
+	for _, model := range modelsToTry {
+		output, err := s.tryWithModel(ctx, finalPrompt, model)
+		if err == nil {
+			return output, nil
+		}
+		// If this model is unavailable, try the next one.
+		if isModelUnavailableError(err) {
+			lastErr = err
+			continue
+		}
+		// For other errors, fail immediately.
+		return "", err
+	}
+
+	// All models exhausted.
+	if lastErr != nil {
+		return "", fmt.Errorf("all models unavailable: %w", lastErr)
+	}
+	return "", errors.New("copilot CLI returned empty output")
+}
+
+// tryWithModel attempts to run the prompt with a specific model.
+// If model is empty, runs without --model flag (CLI picks default).
+func (s *CopilotCLISession) tryWithModel(ctx context.Context, prompt, model string) (string, error) {
 	args := []string{
 		"--no-ask-user",
 		"--no-color",
 		"-s",
 		"-p",
-		finalPrompt,
+		prompt,
 	}
 
 	// If the agent specifies an explicit tools list, restrict to those tools.
@@ -65,8 +95,8 @@ func (s *CopilotCLISession) Send(ctx context.Context, prompt string) (string, er
 		args = append(args, "--allow-all-tools")
 	}
 
-	if s.cfg.Model != "" {
-		args = append(args, "--model", s.cfg.Model)
+	if model != "" {
+		args = append(args, "--model", model)
 	}
 
 	// Add extra directories for per-step resource discovery.
@@ -92,47 +122,30 @@ func (s *CopilotCLISession) Send(ctx context.Context, prompt string) (string, er
 	}
 
 	trimmedErr := strings.TrimSpace(errOut)
-	if s.cfg.Model != "" && strings.Contains(trimmedErr, "from --model flag is not available") {
-		fallbackArgs := []string{
-			"--no-ask-user",
-			"--no-color",
-			"-s",
-			"-p",
-			finalPrompt,
-		}
-		if len(s.cfg.Tools) > 0 {
-			fallbackArgs = append(fallbackArgs, "--available-tools", strings.Join(s.cfg.Tools, ","))
-		} else {
-			fallbackArgs = append(fallbackArgs, "--allow-all-tools")
-		}
-		for _, dir := range s.cfg.ExtraDirs {
-			fallbackArgs = append(fallbackArgs, "--add-dir", dir)
-		}
-		fallbackOut, fallbackErrOut, fallbackRunErr := s.runCopilot(ctx, fallbackArgs)
-		if fallbackRunErr != nil {
-			fallbackMsg := strings.TrimSpace(fallbackErrOut)
-			if fallbackMsg == "" {
-				fallbackMsg = strings.TrimSpace(fallbackOut)
-			}
-			if fallbackMsg == "" {
-				fallbackMsg = fallbackRunErr.Error()
-			}
-			return "", fmt.Errorf("copilot CLI fallback without model failed: %s", fallbackMsg)
-		}
-		fallbackTrimmed := strings.TrimSpace(fallbackOut)
-		if fallbackTrimmed != "" {
-			return fallbackTrimmed, nil
-		}
-		if strings.TrimSpace(fallbackErrOut) != "" {
-			return "", fmt.Errorf("copilot CLI fallback without model returned no output: %s", strings.TrimSpace(fallbackErrOut))
-		}
-		return "", errors.New("copilot CLI fallback without model returned empty output")
-	}
-
 	if trimmedErr != "" {
+		// Check if this is a model unavailability error.
+		if model != "" && strings.Contains(trimmedErr, "from --model flag is not available") {
+			return "", &modelUnavailableError{model: model, msg: trimmedErr}
+		}
 		return "", fmt.Errorf("copilot CLI returned no output: %s", trimmedErr)
 	}
 	return "", errors.New("copilot CLI returned empty output")
+}
+
+// modelUnavailableError indicates the specified model is not available.
+type modelUnavailableError struct {
+	model string
+	msg   string
+}
+
+func (e *modelUnavailableError) Error() string {
+	return fmt.Sprintf("model %q unavailable: %s", e.model, e.msg)
+}
+
+// isModelUnavailableError returns true if the error indicates model unavailability.
+func isModelUnavailableError(err error) bool {
+	var mue *modelUnavailableError
+	return errors.As(err, &mue)
 }
 
 func (s *CopilotCLISession) runCopilot(ctx context.Context, args []string) (string, string, error) {
