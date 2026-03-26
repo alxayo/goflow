@@ -20,6 +20,10 @@ type StepExecutor struct {
 	SDK         SessionExecutor
 	AuditLogger *audit.RunLogger
 	Truncate    *workflow.TruncateConfig
+
+	// DefaultModel is the workflow-level fallback model from config.model.
+	// Used when neither the step nor the agent specifies a model.
+	DefaultModel string
 }
 
 // Execute runs a single step and returns its result.
@@ -75,9 +79,7 @@ func (se *StepExecutor) Execute(
 		SystemPrompt: agent.Prompt,
 		Tools:        agent.Tools,
 		ExtraDirs:    step.ExtraDirs,
-	}
-	if len(agent.Model.Models) > 0 {
-		sessionCfg.Model = agent.Model.Models[0]
+		Models:       se.resolveModels(step, agent),
 	}
 
 	// 5. Create SDK session.
@@ -133,7 +135,7 @@ func (se *StepExecutor) writeSkippedAudit(step workflow.Step, agent *agents.Agen
 		StepID:       step.ID,
 		Agent:        agent.Name,
 		AgentFile:    agent.SourceFile,
-		Model:        firstModel(agent),
+		Model:        se.resolvedModel(step, agent),
 		Status:       string(workflow.StepStatusSkipped),
 		StartedAt:    result.StartedAt,
 		CompletedAt:  result.EndedAt,
@@ -156,7 +158,7 @@ func (se *StepExecutor) writeFailedAudit(sl *audit.StepLogger, step workflow.Ste
 		StepID:       step.ID,
 		Agent:        agent.Name,
 		AgentFile:    agent.SourceFile,
-		Model:        firstModel(agent),
+		Model:        se.resolvedModel(step, agent),
 		Status:       string(workflow.StepStatusFailed),
 		StartedAt:    result.StartedAt,
 		CompletedAt:  result.EndedAt,
@@ -179,7 +181,7 @@ func (se *StepExecutor) writeCompletedAudit(sl *audit.StepLogger, step workflow.
 		StepID:       step.ID,
 		Agent:        agent.Name,
 		AgentFile:    agent.SourceFile,
-		Model:        firstModel(agent),
+		Model:        se.resolvedModel(step, agent),
 		Status:       string(workflow.StepStatusCompleted),
 		StartedAt:    result.StartedAt,
 		CompletedAt:  result.EndedAt,
@@ -199,4 +201,49 @@ func firstModel(agent *agents.Agent) string {
 		return agent.Model.Models[0]
 	}
 	return ""
+}
+
+// resolveModels builds a priority-ordered list of models to try for this step.
+// Returns: step.Model → agent.Model.Models → se.DefaultModel (workflow config).
+// If all are empty, returns nil and the CLI will pick the default model.
+func (se *StepExecutor) resolveModels(step workflow.Step, agent *agents.Agent) []string {
+	var models []string
+
+	// Highest priority: step-level model override.
+	if step.Model != "" {
+		models = append(models, step.Model)
+	}
+
+	// Second: agent's model list (may have multiple fallbacks).
+	models = append(models, agent.Model.Models...)
+
+	// Third: workflow-level default model.
+	if se.DefaultModel != "" {
+		models = append(models, se.DefaultModel)
+	}
+
+	// Deduplicate while preserving order.
+	return dedupeStrings(models)
+}
+
+// resolvedModel returns the first (highest-priority) model for audit logging.
+func (se *StepExecutor) resolvedModel(step workflow.Step, agent *agents.Agent) string {
+	models := se.resolveModels(step, agent)
+	if len(models) > 0 {
+		return models[0]
+	}
+	return ""
+}
+
+// dedupeStrings removes duplicate strings while preserving order.
+func dedupeStrings(input []string) []string {
+	seen := make(map[string]bool)
+	result := make([]string, 0, len(input))
+	for _, s := range input {
+		if s != "" && !seen[s] {
+			seen[s] = true
+			result = append(result, s)
+		}
+	}
+	return result
 }
