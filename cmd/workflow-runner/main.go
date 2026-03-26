@@ -41,6 +41,7 @@ Options:
   --workflow    Path to workflow YAML file (required)
   --inputs      Key=value input pairs (repeatable)
   --audit-dir   Override audit directory (default from workflow config)
+	--mock        Use mock executor instead of Copilot CLI
   --verbose     Enable verbose logging
 `
 
@@ -61,6 +62,7 @@ func run() int {
 
 	workflowPath := fs.String("workflow", "", "Path to workflow YAML file (required)")
 	auditDirFlag := fs.String("audit-dir", "", "Override audit directory")
+	useMock := fs.Bool("mock", false, "Use mock executor instead of Copilot CLI")
 	verbose := fs.Bool("verbose", false, "Enable verbose logging")
 	inputs := &inputsFlag{values: make(map[string]string)}
 	fs.Var(inputs, "inputs", "Key=value input pair (repeatable)")
@@ -153,15 +155,18 @@ func run() int {
 		return 1
 	}
 
-	// 8. Create mock SDK executor (real SDK integration coming later).
-	fmt.Fprintln(os.Stderr, "NOTE: Using mock SDK executor. Real Copilot SDK integration coming in a future phase.")
-	mockSDK := &executor.MockSessionExecutor{
-		DefaultResponse: "mock output",
+	// 8. Create executor.
+	var sessionExecutor executor.SessionExecutor
+	if *useMock {
+		fmt.Fprintln(os.Stderr, "NOTE: Using mock executor.")
+		sessionExecutor = &executor.MockSessionExecutor{DefaultResponse: "mock output"}
+	} else {
+		sessionExecutor = &executor.CopilotCLIExecutor{}
 	}
 
 	// 9. Build StepExecutor.
 	stepExec := &executor.StepExecutor{
-		SDK:         mockSDK,
+		SDK:         sessionExecutor,
 		AuditLogger: auditLogger,
 		Truncate:    wf.Output.Truncate,
 	}
