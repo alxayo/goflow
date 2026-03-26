@@ -1,0 +1,90 @@
+name: "trending-news"
+description: "Scan top 5 news sites in parallel, extract headlines, and identify trending topics"
+
+inputs:
+  site_1:
+    description: "First news site URL"
+    default: "https://www.bbc.com/news"
+  site_2:
+    description: "Second news site URL"
+    default: "https://www.cnn.com"
+  site_3:
+    description: "Third news site URL"
+    default: "https://www.reuters.com"
+  site_4:
+    description: "Fourth news site URL"
+    default: "https://news.google.com"
+  site_5:
+    description: "Fifth news site URL"
+    default: "https://apnews.com"
+
+config:
+  model: "gpt-4o"
+  audit_dir: ".workflow-runs"
+  audit_retention: 10
+  max_concurrency: 5
+  shared_memory:
+    enabled: false
+
+agents:
+  news-scanner:
+    file: "./agents/news-scanner.agent.md"
+  trend-analyzer:
+    file: "./agents/trend-analyzer.agent.md"
+
+steps:
+  # --- Fan-out: 5 parallel headline scans (no dependencies between them) ---
+  - id: scan-bbc
+    agent: news-scanner
+    prompt: "Fetch and extract the latest headlines from: {{inputs.site_1}}"
+
+  - id: scan-cnn
+    agent: news-scanner
+    prompt: "Fetch and extract the latest headlines from: {{inputs.site_2}}"
+
+  - id: scan-reuters
+    agent: news-scanner
+    prompt: "Fetch and extract the latest headlines from: {{inputs.site_3}}"
+
+  - id: scan-google-news
+    agent: news-scanner
+    prompt: "Fetch and extract the latest headlines from: {{inputs.site_4}}"
+
+  - id: scan-ap
+    agent: news-scanner
+    prompt: "Fetch and extract the latest headlines from: {{inputs.site_5}}"
+
+  # --- Fan-in: aggregate all headlines and find trends ---
+  - id: analyze-trends
+    agent: trend-analyzer
+    prompt: |
+      Analyze the following headlines from 5 major news sources.
+      Identify which topics are trending across multiple outlets.
+
+      ## BBC News
+      {{steps.scan-bbc.output}}
+
+      ## CNN
+      {{steps.scan-cnn.output}}
+
+      ## Reuters
+      {{steps.scan-reuters.output}}
+
+      ## Google News
+      {{steps.scan-google-news.output}}
+
+      ## AP News
+      {{steps.scan-ap.output}}
+    depends_on:
+      - scan-bbc
+      - scan-cnn
+      - scan-reuters
+      - scan-google-news
+      - scan-ap
+
+output:
+  steps: [analyze-trends]
+  format: "markdown"
+  truncate:
+    strategy: "chars"
+    limit: 5000
