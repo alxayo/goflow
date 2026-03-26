@@ -74,6 +74,7 @@ func (se *StepExecutor) Execute(
 	sessionCfg := SessionConfig{
 		SystemPrompt: agent.Prompt,
 		Tools:        agent.Tools,
+		ExtraDirs:    step.ExtraDirs,
 	}
 	if len(agent.Model.Models) > 0 {
 		sessionCfg.Model = agent.Model.Models[0]

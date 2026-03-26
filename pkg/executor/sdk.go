@@ -31,4 +31,8 @@ type SessionConfig struct {
 	Model        string
 	Tools        []string
 	MCPServers   map[string]interface{}
+
+	// ExtraDirs lists directories whose agents, skills, MCP servers,
+	// instructions, and hooks are added to CLI discovery for this session.
+	ExtraDirs []string
 }

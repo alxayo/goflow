@@ -75,6 +75,11 @@ type Step struct {
 	OnError    string     `yaml:"on_error"`
 	RetryCount int        `yaml:"retry_count"`
 	Timeout    string     `yaml:"timeout"`
+
+	// ExtraDirs lists directories whose agents, skills, MCP servers,
+	// instructions, and hooks should be discovered and added for this
+	// step only, extending the CLI baseline.
+	ExtraDirs []string `yaml:"extra_dirs"`
 }
 
 // Condition defines when a step should execute based on a prior step's output.

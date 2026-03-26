@@ -50,15 +50,28 @@ func (s *CopilotCLISession) Send(ctx context.Context, prompt string) (string, er
 	finalPrompt := composePrompt(s.cfg.SystemPrompt, prompt)
 
 	args := []string{
-		"--allow-all-tools",
 		"--no-ask-user",
 		"--no-color",
 		"-s",
 		"-p",
 		finalPrompt,
 	}
+
+	// If the agent specifies an explicit tools list, restrict to those tools.
+	// Otherwise allow all tools (CLI default discovery).
+	if len(s.cfg.Tools) > 0 {
+		args = append(args, "--available-tools", strings.Join(s.cfg.Tools, ","))
+	} else {
+		args = append(args, "--allow-all-tools")
+	}
+
 	if s.cfg.Model != "" {
 		args = append(args, "--model", s.cfg.Model)
+	}
+
+	// Add extra directories for per-step resource discovery.
+	for _, dir := range s.cfg.ExtraDirs {
+		args = append(args, "--add-dir", dir)
 	}
 
 	out, errOut, runErr := s.runCopilot(ctx, args)
@@ -81,12 +94,19 @@ func (s *CopilotCLISession) Send(ctx context.Context, prompt string) (string, er
 	trimmedErr := strings.TrimSpace(errOut)
 	if s.cfg.Model != "" && strings.Contains(trimmedErr, "from --model flag is not available") {
 		fallbackArgs := []string{
-			"--allow-all-tools",
 			"--no-ask-user",
 			"--no-color",
 			"-s",
 			"-p",
 			finalPrompt,
+		}
+		if len(s.cfg.Tools) > 0 {
+			fallbackArgs = append(fallbackArgs, "--available-tools", strings.Join(s.cfg.Tools, ","))
+		} else {
+			fallbackArgs = append(fallbackArgs, "--allow-all-tools")
+		}
+		for _, dir := range s.cfg.ExtraDirs {
+			fallbackArgs = append(fallbackArgs, "--add-dir", dir)
 		}
 		fallbackOut, fallbackErrOut, fallbackRunErr := s.runCopilot(ctx, fallbackArgs)
 		if fallbackRunErr != nil {
