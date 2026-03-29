@@ -21,7 +21,7 @@ goflow is an AI workflow engine that coordinates LLM agents in parallel pipeline
 !!! tip "Get started in 60 seconds"
     Clone the repo, build, and run your first workflow:
     ```bash
-    git clone https://github.com/alex/goflow.git && cd goflow
+    git clone https://github.com/alxayo/goflow.git && cd goflow
     go build -o goflow ./cmd/goflow
     ./goflow run --workflow examples/simple-sequential.yaml --mock --verbose
     ```

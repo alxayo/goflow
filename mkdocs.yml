@@ -1,8 +1,8 @@
 site_name: goflow
 site_description: AI workflow orchestration engine for multi-agent LLM pipelines
-site_url: https://alex.github.io/goflow/
+site_url: https://alxayo.github.io/goflow/
 repo_name: goflow
-repo_url: https://github.com/alex/goflow
+repo_url: https://github.com/alxayo/goflow
 
 theme:
   name: material
@@ -50,7 +50,7 @@ theme:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/alex/goflow
+      link: https://github.com/alxayo/goflow
   generator: false
 
 extra_css:

@@ -5,7 +5,7 @@ This quick start gets you from clone to a working workflow in a few minutes.
 ## 1. Build the CLI
 
 ```bash
-git clone https://github.com/alex/goflow.git
+git clone https://github.com/alxayo/goflow.git
 cd goflow
 go build -o goflow ./cmd/goflow
 ```
