@@ -33,6 +33,11 @@ type Config struct {
 	LogLevel         string             `yaml:"log_level"`
 	AgentSearchPaths []string           `yaml:"agent_search_paths"`
 	MaxConcurrency   int                `yaml:"max_concurrency"`
+
+	// Interactive enables the ask_user tool for all steps in this workflow,
+	// allowing agents to pause and request clarification from the user.
+	// When false (default), agents run autonomously without user interaction.
+	Interactive bool `yaml:"interactive"`
 }
 
 // SharedMemoryConfig controls shared memory between parallel agents.
@@ -85,6 +90,14 @@ type Step struct {
 	// instructions, and hooks should be discovered and added for this
 	// step only, extending the CLI baseline.
 	ExtraDirs []string `yaml:"extra_dirs"`
+
+	// Interactive controls whether this step's agent can ask the user for
+	// clarification via the ask_user tool. Uses a pointer to support
+	// three states:
+	//   - nil (unset): inherit from workflow config or CLI flag
+	//   - true: enable user input for this step regardless of config
+	//   - false: disable user input for this step regardless of config
+	Interactive *bool `yaml:"interactive,omitempty"`
 }
 
 // Condition defines when a step should execute based on a prior step's output.
@@ -129,4 +142,30 @@ type StepResult struct {
 	StartedAt string     `json:"started_at"`
 	EndedAt   string     `json:"ended_at"`
 	SessionID string     `json:"session_id,omitempty"`
+}
+
+// IsInteractive resolves whether a specific step should allow user input.
+// The resolution priority (highest to lowest) is:
+//  1. Step-level Interactive field (explicit per-step override)
+//  2. Workflow-level config.interactive setting
+//  3. CLI-level --interactive flag
+//
+// If the step has an explicit Interactive value (non-nil), it takes precedence.
+// Otherwise, user input is enabled if either the workflow config or CLI flag
+// enables it. This allows users to opt in globally while opting out specific
+// steps, or vice versa.
+func IsInteractive(step Step, wfInteractive, cliInteractive bool) bool {
+	// Step-level override takes highest precedence when explicitly set.
+	if step.Interactive != nil {
+		return *step.Interactive
+	}
+	// Fall back to workflow config or CLI flag — either one enables it.
+	return wfInteractive || cliInteractive
+}
+
+// BoolPtr returns a pointer to the given bool value.
+// This is a convenience helper for constructing Step literals with an
+// explicit Interactive field in tests and YAML parsing.
+func BoolPtr(b bool) *bool {
+	return &b
 }
