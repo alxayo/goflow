@@ -1,0 +1,110 @@
+site_name: goflow
+site_description: AI workflow orchestration engine for multi-agent LLM pipelines
+site_url: https://alex.github.io/goflow/
+repo_name: goflow
+repo_url: https://github.com/alex/goflow
+
+theme:
+  name: material
+  language: en
+  icon:
+    logo: material/transit-connection-variant
+    repo: fontawesome/brands/github
+  font:
+    text: IBM Plex Sans
+    code: JetBrains Mono
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.top
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.tracking
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - announce.dismiss
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/alex/goflow
+  generator: false
+
+extra_css:
+  - stylesheets/extra.css
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - def_list
+  - footnotes
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - pymdownx.mark
+  - pymdownx.keys
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Quick Start: quickstart.md
+  - Installation: installation.md
+  - Guide:
+      - Getting Started: guide/getting-started.md
+      - Building Workflows: guide/building-workflows.md
+      - Agent Files: guide/agent-files.md
+  - Reference:
+      - Workflow Schema: reference/workflow-schema.md
+      - Advanced Usage: reference/advanced-usage.md
+      - CLI Commands: reference/cli.md
+  - Examples:
+      - Overview: examples/index.md
+      - Simple Sequential: examples/simple-sequential.md
+      - Security Scan: examples/security-scan.md
+      - Guided Code Review: examples/guided-code-review.md
+      - Decision Helper: examples/decision-helper.md
+      - Global News Trends: examples/global-news-trends.md
