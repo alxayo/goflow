@@ -11,7 +11,7 @@ This project includes example workflow files in the examples folder.
 From the repository root:
 
 ```bash
-go run ./cmd/workflow-runner run \
+goflow run \
 	--workflow examples/simple-sequential.yaml \
 	--inputs files='pkg/workflow/*.go' \
 	--verbose
@@ -24,7 +24,7 @@ Note: Relative agent paths in workflow files (like `../agents/security-reviewer.
 Review only workflow package files:
 
 ```bash
-go run ./cmd/workflow-runner run \
+goflow run \
 	--workflow examples/simple-sequential.yaml \
 	--inputs files='pkg/workflow/*.go' \
 	--verbose
@@ -33,7 +33,7 @@ go run ./cmd/workflow-runner run \
 Review only executor package files:
 
 ```bash
-go run ./cmd/workflow-runner run \
+goflow run \
 	--workflow examples/simple-sequential.yaml \
 	--inputs files='pkg/executor/*.go' \
 	--verbose
@@ -42,7 +42,7 @@ go run ./cmd/workflow-runner run \
 Review all Go files in the repository:
 
 ```bash
-go run ./cmd/workflow-runner run \
+goflow run \
 	--workflow examples/simple-sequential.yaml \
 	--inputs files='**/*.go' \
 	--verbose
@@ -57,7 +57,7 @@ go run ./cmd/workflow-runner run \
 Mock example:
 
 ```bash
-go run ./cmd/workflow-runner run \
+goflow run \
 	--workflow examples/simple-sequential.yaml \
 	--inputs files='pkg/workflow/*.go' \
 	--mock \
