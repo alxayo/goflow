@@ -1,6 +1,6 @@
 # Code Review Pipeline
 
-A production-ready code review workflow with parallel expert reviewers.
+A code review workflow that models a fan-out and fan-in structure across multiple expert reviewers.
 
 ---
 
@@ -8,7 +8,7 @@ A production-ready code review workflow with parallel expert reviewers.
 
 This example demonstrates:
 
-- **Fan-out/fan-in** pattern — multiple reviewers running in parallel
+- **Fan-out/fan-in** pattern — multiple reviewers represented as independent DAG branches
 - **External agent files** — reusable `.agent.md` definitions
 - **Expert aggregation** — combining multiple perspectives
 - **Input configuration** — customizable file targets
@@ -132,8 +132,11 @@ analyze─┤                     ├─→ aggregate
 ```
 
 **Phase 1:** `analyze` runs alone  
-**Phase 2:** `security-review` and `performance-review` run **in parallel**  
+**Phase 2:** `security-review` and `performance-review` are independent DAG branches  
 **Phase 3:** `aggregate` waits for both, then combines  
+
+!!! note "Current CLI behavior"
+  The workflow structure is parallel-ready, but the current `goflow run` command uses the sequential orchestrator path. That means the CLI still executes same-level steps one at a time today.
 
 ---
 
@@ -255,9 +258,9 @@ goflow run \
 
 ## Key Patterns
 
-### 1. Parallel Execution
+### 1. Parallel-Ready Structure
 
-Both expert reviews depend only on `analyze`, so they run concurrently:
+Both expert reviews depend only on `analyze`, so they land in the same DAG level and are eligible for concurrent execution in the parallel orchestrator implementation:
 
 ```yaml
 - id: security-review

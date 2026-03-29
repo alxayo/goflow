@@ -2,6 +2,9 @@
 
 Technical overview of goflow's internal architecture and execution model.
 
+!!! note "Current CLI status"
+  The codebase contains both sequential and parallel orchestrator implementations, shared-memory building blocks, and truncation helpers. The current `goflow run` command still uses the sequential orchestrator path, does not automatically wire shared memory, and does not automatically apply truncation during normal execution.
+
 ---
 
 ## System Overview
@@ -55,7 +58,7 @@ Technical overview of goflow's internal architecture and execution model.
 ### Orchestrator (`pkg/orchestrator/orchestrator.go`)
 
 - Coordinates step execution order
-- Manages parallel execution via goroutines
+- Contains both sequential and parallel execution implementations
 - Handles condition evaluation
 - Tracks step results
 
@@ -70,12 +73,12 @@ Technical overview of goflow's internal architecture and execution model.
 
 - Resolves `{{inputs.X}}` templates
 - Resolves `{{steps.Y.output}}` templates
-- Applies truncation rules
+- Contains truncation helpers, though the normal CLI path does not currently invoke them automatically
 
 ### Reporter (`pkg/reporter/reporter.go`)
 
 - Formats final output
-- Applies output truncation
+- Selects output steps and formats markdown/json/plain text
 - Supports markdown/json/plain formats
 
 ### Audit Logger (`pkg/audit/logger.go`)

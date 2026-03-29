@@ -2,6 +2,17 @@
 
 A comprehensive guide to understanding, configuring, and building workflows with goflow: an AI orchestration engine that coordinates multi-agent LLM workflows using the Copilot SDK.
 
+## Implementation Accuracy Note
+
+This document mixes current behavior with broader design intent. For the implementation-accurate, source-code-based reference to every setting and option, use [SETTINGS_REFERENCE.md](SETTINGS_REFERENCE.md).
+
+The most important current runtime caveats are:
+
+1. `goflow run` currently executes the sequential orchestrator path.
+2. `config.max_concurrency` is implemented in `RunParallel()` but does not affect the normal CLI path today.
+3. `output.truncate` is parsed and helper code exists, but automatic truncation is not currently applied during template injection or final reporting.
+4. Shared-memory helpers exist in the codebase, but the main CLI path does not yet wire them in automatically.
+
 ---
 
 ## Table of Contents

@@ -1,326 +1,143 @@
 # Output Control
 
-Configure how workflow results are formatted, truncated, and presented.
+This page describes what the current code actually does with the `output` section.
 
 ---
 
-## Output Section
-
-Configure output in the `output` section of your workflow:
+## Output Section Shape
 
 ```yaml
 output:
-  steps: [summary, recommendations]
+  steps: [summary]
   format: markdown
   truncate:
     strategy: chars
     limit: 5000
 ```
 
----
-
-## Output Fields
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `steps` | array | [last step] | Step IDs to include in output |
-| `format` | string | `markdown` | Output format |
-| `truncate` | object | — | Truncation settings |
+Fields are defined in `pkg/workflow/types.go`, formatted in `pkg/reporter/reporter.go`, and finalized into audit files in `pkg/audit/logger.go`.
 
 ---
 
-## steps
+## `steps`
 
-Specify which step outputs to include in the final result:
+`output.steps` controls which step results are included in the formatted stdout output.
+
+Example:
 
 ```yaml
 output:
-  steps: [security-review, perf-review, summary]
+  steps: [security-review, summary]
 ```
 
-### Order Matters
+### Exact behavior
 
-Steps are output in the order listed:
+1. Each listed step ID is looked up in the results map.
+2. Missing IDs are silently skipped.
+3. Skipped workflow steps are rendered as skipped markers in markdown and plain output.
 
-```yaml
-steps: [summary, details]  # Summary first
-steps: [details, summary]  # Details first
-```
+### When `output.steps` is omitted
 
-### Single Step
+The behavior differs slightly between stdout output and audit output:
 
-```yaml
-steps: [final-summary]  # Just one step's output
-```
+1. The reporter includes all completed steps in alphabetical order.
+2. The audit finalizer writes `final_output.md` using completed steps in workflow declaration order.
 
-### All Steps
-
-If `steps` is omitted, only the last step is output.
+So omitting `output.steps` can produce a different order in stdout vs `final_output.md`.
 
 ---
 
-## format
+## `format`
 
-Control output formatting:
+The current reporter supports these values:
 
-### markdown (default)
+| Value | Exact behavior |
+|---|---|
+| `markdown` | Renders `# Workflow Results` and one `## Step:` section per step |
+| `json` | Renders a JSON object with step status and output |
+| `plain` | Renders step outputs with `=== step ===` separators |
+| `text` | Alias of `plain` |
+| empty or unknown | Falls back to `markdown` |
 
-```yaml
-format: markdown
-```
+### Markdown example
 
-**Output:**
 ```markdown
-## Step: security-review
+# Workflow Results
 
-Found 2 critical issues...
+## Step: summary
 
-## Step: perf-review
-
-Performance looks good...
+Actual step output here
 ```
 
-### json
+### JSON example
 
-```yaml
-format: json
-```
-
-**Output:**
 ```json
 {
-  "workflow": "code-review",
   "steps": {
-    "security-review": "Found 2 critical issues...",
-    "perf-review": "Performance looks good..."
+    "summary": {
+      "status": "completed",
+      "output": "Actual step output here"
+    }
   }
 }
 ```
 
-### plain
+---
 
-```yaml
-format: plain
-```
+## `truncate`
 
-**Output:**
-```
-Found 2 critical issues...
+This is the setting that most needed clarification.
 
-Performance looks good...
-```
+### What exists today
 
-No headers, no formatting — just the raw content.
+The codebase contains a truncation helper in `pkg/workflow/template.go` with these strategies:
+
+| Strategy | Helper behavior |
+|---|---|
+| `chars` | Keeps the first `limit` Unicode characters |
+| `lines` | Keeps the first `limit` lines |
+| `tokens` | Approximates 1 token as 4 characters and keeps the first `limit * 4` characters |
+
+When truncation occurs, the helper appends a suffix that explains how much content was trimmed.
+
+### Why truncation is needed conceptually
+
+Without truncation, a step that generates a very large output can make downstream prompts too large, too expensive, or impossible to send when that output is injected with `{{steps.some-step.output}}`.
+
+### What the current runtime actually does
+
+Important: `output.truncate` is currently parsed, but it is **not automatically applied** by the main `goflow run` path.
+
+That means:
+
+1. prior step outputs are currently injected into later prompts at full size
+2. reporter output is currently emitted at full size
+3. setting `output.truncate` today does not change stdout output or template injection behavior
+
+So `truncate` is forward-compatible configuration, not active behavior in the current CLI path.
 
 ---
 
-## truncate
+## Audit Output
 
-Limit output size to prevent overwhelming results.
+Regardless of output format, the audit logger writes:
 
-### Configuration
+1. `output.md` for each completed step
+2. `final_output.md` for the run summary
 
-```yaml
-output:
-  truncate:
-    strategy: "lines"  # or "chars"
-    limit: 100
-```
-
-### Strategies
-
-| Strategy | Description | Use Case |
-|----------|-------------|----------|
-| `lines` | Keep last N lines | Log-style output |
-| `chars` | Keep last N characters | Prose/reports |
-
-### Global Truncation
-
-Set defaults in `config`:
-
-```yaml
-config:
-  truncate:
-    strategy: lines
-    limit: 50
-
-output:
-  steps: [analysis]
-  # Uses global truncation settings
-```
-
-### Per-Output Override
-
-```yaml
-config:
-  truncate:
-    strategy: lines
-    limit: 50
-
-output:
-  steps: [analysis]
-  truncate:
-    strategy: chars
-    limit: 10000  # Override for final output
-```
+Those files currently contain the full stored outputs used by the run path.
 
 ---
 
-## Step Output Truncation
+## Practical Recommendation
 
-Truncation also applies when injecting step outputs via templates:
+Use `output.steps` and `format` today.
 
-```yaml
-config:
-  truncate:
-    strategy: lines
-    limit: 100
-
-steps:
-  - id: analyze
-    prompt: "Generate a detailed report..."  # Might produce 500 lines
-
-  - id: summarize
-    prompt: "Summarize: {{steps.analyze.output}}"  # Gets last 100 lines
-    depends_on: [analyze]
-```
-
-This prevents context window overflow when passing large outputs between steps.
-
----
-
-## Examples
-
-### Minimal Output
-
-Just the final summary:
-
-```yaml
-output:
-  steps: [summary]
-  format: plain
-```
-
-### Complete Report
-
-Multiple sections in markdown:
-
-```yaml
-output:
-  steps: [executive-summary, detailed-findings, recommendations]
-  format: markdown
-```
-
-### Machine-Readable
-
-For pipeline integration:
-
-```yaml
-output:
-  steps: [analysis-result]
-  format: json
-```
-
-### Limited Size
-
-For contexts with limits:
-
-```yaml
-output:
-  steps: [summary]
-  format: plain
-  truncate:
-    strategy: chars
-    limit: 2000
-```
-
----
-
-## Saving Output
-
-### To File
-
-Redirect stdout:
-
-```bash
-goflow run -w workflow.yaml > report.md
-```
-
-### To Variable
-
-Capture in script:
-
-```bash
-OUTPUT=$(goflow run -w workflow.yaml)
-echo "$OUTPUT"
-```
-
-### To File While Viewing
-
-Use tee:
-
-```bash
-goflow run -w workflow.yaml | tee report.md
-```
-
----
-
-## Audit Trail
-
-Regardless of output settings, the full untruncated output is always saved to the audit trail:
-
-```
-.workflow-runs/2026-03-26T10-00-00_example/
-├── final_output.md    # Formatted output (as printed)
-└── steps/
-    └── 00_analyze/
-        └── output.md  # Full untruncated step output
-```
-
----
-
-## Best Practices
-
-### 1. Output Only What Users Need
-
-```yaml
-# ✓ Good: Just the summary
-steps: [summary]
-
-# ✗ Questionable: All intermediate steps
-steps: [parse, analyze, review, format, validate, summary]
-```
-
-### 2. Use Appropriate Formats
-
-| Use Case | Format |
-|----------|--------|
-| Human reading | `markdown` |
-| Script/pipeline | `json` |
-| Simple embedding | `plain` |
-
-### 3. Consider Context Limits
-
-If output will be used elsewhere (email, Slack, etc.), truncate appropriately:
-
-```yaml
-truncate:
-  strategy: chars
-  limit: 3000  # Most messaging platforms handle this
-```
-
-### 4. Check Full Output in Audit
-
-If truncated output misses something:
-
-```bash
-cat .workflow-runs/*/steps/*/output.md
-```
+Treat `truncate` as planned configuration until the executor or reporter is updated to call the truncation helper.
 
 ---
 
 ## See Also
 
-- [Workflow Schema](workflow-schema.md) — Full YAML reference
-- [Template Variables](templates.md) — Step output templates
-- [CLI Reference](cli.md) — Output redirection options
+- [Settings And Options](settings-and-options.md)
+- [Workflow Schema](workflow-schema.md)

@@ -1,6 +1,19 @@
 # goflow
 
-An AI workflow orchestration engine that coordinates multi-agent LLM workflows with parallelism, powered by the Copilot SDK.
+An AI workflow orchestration engine for multi-agent LLM workflows, powered by the Copilot SDK.
+
+## Current Implementation Notes
+
+The repository includes roadmap-oriented examples and docs, but the current CLI behavior is narrower than the full design surface in some areas.
+
+The most important current facts are:
+
+1. `goflow run` currently executes the sequential orchestrator path.
+2. `config.max_concurrency` is implemented in the parallel orchestrator code, but not used by the normal CLI path today.
+3. `output.truncate` is parsed and helper code exists, but normal workflow execution does not automatically apply truncation yet.
+4. Shared-memory helpers exist in the codebase, but automatic shared-memory wiring is not yet active in the main CLI flow.
+
+For the implementation-accurate field-by-field reference, see [SETTINGS_REFERENCE.md](SETTINGS_REFERENCE.md) and [DOCS.md](DOCS.md).
 
 ## Run an Example Workflow
 
@@ -87,6 +100,22 @@ goflow version
 ```
 
 The output includes the semantic version tag, short commit SHA, and build timestamp.
+
+## Build From Source
+
+```bash
+go build -o goflow ./cmd/workflow-runner/main.go
+```
+
+## Implemented CLI Commands
+
+The current CLI implements:
+
+- `goflow run`
+- `goflow version`
+- `goflow help`
+
+Older docs may mention `goflow validate` or `goflow list`, but those commands are not currently implemented in `cmd/workflow-runner/main.go`.
 
 ## Releases
 

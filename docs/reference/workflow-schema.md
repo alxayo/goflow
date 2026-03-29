@@ -1,396 +1,262 @@
-# Workflow YAML Schema
+# Workflow Schema
 
-Complete reference for all workflow YAML fields.
+This page describes the workflow YAML shape that the current codebase parses and validates.
+
+For exact runtime behavior of every field, including fields that are parsed but not yet active in `goflow run`, see [Settings And Options](settings-and-options.md).
 
 ---
 
-## Top-Level Structure
+## Top-Level Shape
 
 ```yaml
-name: "workflow-name"              # Required
-description: "What this workflow does"  # Optional
+name: "workflow-name"
+description: "What the workflow does"
 
-inputs:                            # Optional
-  input-name:
-    description: "..."
-    default: "..."
+inputs:
+  key:
+    description: "Human-readable input description"
+    default: "value"
 
-config:                            # Optional
-  model: "gpt-4o"
+config:
+  model: "gpt-5"
   audit_dir: ".workflow-runs"
-  # ... more config options
+  audit_retention: 10
+  interactive: true
+  agent_search_paths:
+    - "./agents"
 
-agents:                            # Required
-  agent-name:
-    inline: { ... }
-    # or
-    file: "path/to/agent.agent.md"
+agents:
+  reviewer:
+    inline:
+      description: "Reviews code"
+      prompt: "You are a reviewer"
+      tools: [grep, view]
+      model: gpt-5
 
-steps:                             # Required
-  - id: "step-id"
-    agent: "agent-name"
-    prompt: "..."
+steps:
+  - id: analyze
+    agent: reviewer
+    prompt: "Analyze {{inputs.files}}"
 
-output:                            # Optional
-  steps: [step-id]
-  format: "markdown"
+output:
+  steps: [analyze]
+  format: markdown
 ```
 
 ---
 
-## name (required)
+## Top-Level Fields
 
-```yaml
-name: "code-review-pipeline"
-```
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | string | Unique identifier for the workflow |
-
-**Rules:**
-- Must be a valid identifier (letters, numbers, hyphens, underscores)
-- Used in audit trail folder names
-- Should be descriptive and URL-safe
+| Field | Required | Notes |
+|---|---|---|
+| `name` | Yes | Validation fails if omitted |
+| `description` | No | Informational |
+| `inputs` | No | Runtime values with optional defaults |
+| `config` | No | Workflow-wide settings |
+| `agents` | Yes in practice | Steps must resolve to agent definitions |
+| `skills` | No | Parsed, but not used by the current CLI path |
+| `steps` | Yes | Must contain at least one step |
+| `output` | No | Controls final stdout formatting |
 
 ---
 
-## description (optional)
-
-```yaml
-description: "Multi-agent code review with security and performance analysis"
-```
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `description` | string | Human-readable explanation |
-
----
-
-## inputs (optional)
-
-Define runtime parameters:
+## `inputs`
 
 ```yaml
 inputs:
   files:
-    description: "Files to process (glob pattern)"
-    default: "src/**/*.go"
-  
-  mode:
-    description: "Review mode: quick or detailed"
-    # No default = required input
+    description: "Files to review"
+    default: "pkg/**/*.go"
 ```
 
-### Input Fields
+| Field | Required | Notes |
+|---|---|---|
+| `description` | No | Documentation only in the current runtime |
+| `default` | No | Used when CLI does not provide a value |
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `description` | string | No | Help text shown in errors |
-| `default` | string | No | Default value if not provided |
-
-### Providing Inputs
-
-```bash
-goflow run --workflow example.yaml --inputs files='*.go' --inputs mode='detailed'
-```
-
-### Using Inputs
-
-```yaml
-prompt: "Analyze {{inputs.files}} in {{inputs.mode}} mode"
-```
+Use inputs in prompts with `{{inputs.files}}`.
 
 ---
 
-## config (optional)
-
-Global workflow configuration:
+## `config`
 
 ```yaml
 config:
-  model: "gpt-4o"
-  audit_dir: ".workflow-runs"
+  model: gpt-5
+  audit_dir: .workflow-runs
   audit_retention: 10
-  truncate:
-    strategy: "lines"
-    limit: 100
-  shared_memory:
-    enabled: true
-    inject_into_prompt: true
+  interactive: true
   agent_search_paths:
-    - "./custom-agents"
-    - "/shared/agents"
+    - ./custom-agents
 ```
 
-### Config Fields
+### Fields defined in the schema
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `model` | string | Provider default | Default model for all agents |
-| `audit_dir` | string | `.workflow-runs` | Where to store audit trails |
-| `audit_retention` | number | 10 | Number of runs to keep |
-| `truncate` | object | — | Default output truncation |
-| `shared_memory` | object | — | Shared memory configuration |
-| `agent_search_paths` | array | — | Additional agent file search paths |
+| Field | Parsed | Active in `goflow run` |
+|---|---|---|
+| `model` | Yes | Yes |
+| `audit_dir` | Yes | Yes |
+| `audit_retention` | Yes | Yes |
+| `shared_memory` | Yes | Not fully wired |
+| `provider` | Yes | No |
+| `streaming` | Yes | No |
+| `log_level` | Yes | Defaulted only |
+| `agent_search_paths` | Yes | Yes |
+| `max_concurrency` | Yes | Not in the current CLI path |
+| `interactive` | Yes | Yes |
 
-### Truncation Config
-
-```yaml
-config:
-  truncate:
-    strategy: "lines"  # "lines" or "chars"
-    limit: 100         # Number of lines or characters
-```
-
-### Shared Memory Config
-
-```yaml
-config:
-  shared_memory:
-    enabled: true
-    inject_into_prompt: true  # Automatically inject memory into prompts
-```
+Important: `goflow run` currently uses the sequential orchestrator path. The codebase has a parallel orchestrator, but the CLI does not call it yet.
 
 ---
 
-## agents (required)
+## `agents`
 
-Define agents used in the workflow:
+Two forms are supported.
+
+### File-based
 
 ```yaml
 agents:
-  # Inline definition
-  reviewer:
-    inline:
-      description: "Reviews code"
-      prompt: "You are an expert code reviewer."
-      tools:
-        - grep
-        - read_file
-      model: "gpt-4o"
-
-  # File reference
   security:
     file: "./agents/security-reviewer.agent.md"
 ```
 
-### Inline Agent Fields
+### Inline
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `description` | string | Yes | What this agent does |
-| `prompt` | string | Yes | System prompt (agent instructions) |
-| `tools` | array | No | List of allowed tools |
-| `model` | string | No | Model override |
-| `agents` | array | No | Sub-agents for delegation |
+```yaml
+agents:
+  reviewer:
+    inline:
+      description: "Reviews code"
+      prompt: "You are an expert reviewer"
+      tools: [grep, read_file]
+      model: gpt-5
+```
 
-### File Agent Fields
+Inline agents support only these fields:
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `file` | string | Yes | Path to `.agent.md` file |
-
-Paths are resolved relative to the workflow file.
+| Field | Required |
+|---|---|
+| `description` | No |
+| `prompt` | Yes |
+| `tools` | No |
+| `model` | No |
 
 ---
 
-## steps (required)
-
-Define the workflow's execution steps:
+## `steps`
 
 ```yaml
 steps:
   - id: analyze
     agent: reviewer
-    prompt: "Analyze the code structure."
+    prompt: "Analyze the code"
 
-  - id: review
+  - id: summarize
     agent: reviewer
-    prompt: "Review: {{steps.analyze.output}}"
+    prompt: "Summarize {{steps.analyze.output}}"
     depends_on: [analyze]
     condition:
       step: analyze
-      contains: "ISSUES"
+      contains: "issue"
 ```
 
-### Step Fields
+### Step fields currently defined
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `id` | string | Yes | Unique step identifier |
-| `agent` | string | Yes | Agent name from `agents` section |
-| `prompt` | string | Yes | The task/question for the agent |
-| `depends_on` | array | No | Step IDs that must complete first |
-| `condition` | object | No | Condition to run this step |
-| `tools` | array | No | Override agent's tools |
-| `model` | string | No | Override agent's model |
+| Field | Parsed | Active in runtime |
+|---|---|---|
+| `id` | Yes | Yes |
+| `agent` | Yes | Yes |
+| `prompt` | Yes | Yes |
+| `depends_on` | Yes | Yes |
+| `condition` | Yes | Yes |
+| `skills` | Yes | No |
+| `on_error` | Yes | No |
+| `retry_count` | Yes | No |
+| `timeout` | Yes | No |
+| `model` | Yes | Yes |
+| `extra_dirs` | Yes | Yes |
+| `interactive` | Yes | Yes |
 
-### Step ID Rules
+### Condition operators actually supported
 
-- Must be unique within the workflow
-- Use lowercase with hyphens: `security-review`
-- Referenced in `depends_on` and `{{steps.ID.output}}`
+| Operator | Supported |
+|---|---|
+| `contains` | Yes |
+| `not_contains` | Yes |
+| `equals` | Yes |
+| `not_equals` | No |
 
-### depends_on
+Only one operator is evaluated today. The evaluator checks `contains`, then `not_contains`, then `equals`.
 
-```yaml
-depends_on: [step-a, step-b]  # Waits for BOTH to complete
-```
-
-Steps without `depends_on` run as soon as possible (potentially in parallel).
-
-### condition
-
-Run the step only if a condition is met:
-
-```yaml
-condition:
-  step: previous-step      # Which step's output to check
-  contains: "APPROVED"     # Must contain this substring
-```
-
-| Operator | Description |
-|----------|-------------|
-| `contains` | Output contains substring |
-| `not_contains` | Output does NOT contain substring |
-| `equals` | Output exactly equals (trimmed) |
-| `not_equals` | Output does NOT equal |
-
-Multiple operators are AND'd together.
+Validation also requires `condition.step` to be an upstream dependency of the step being guarded.
 
 ---
 
-## output (optional)
-
-Control the final output:
+## `output`
 
 ```yaml
 output:
-  steps: [summary, recommendations]  # Which steps to include
-  format: "markdown"                 # Output format
+  steps: [summary]
+  format: markdown
   truncate:
-    strategy: "chars"
+    strategy: chars
     limit: 5000
 ```
 
-### Output Fields
+| Field | Parsed | Active in runtime |
+|---|---|---|
+| `steps` | Yes | Yes |
+| `format` | Yes | Yes |
+| `truncate` | Yes | Not currently applied |
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `steps` | array | Last step | Step IDs to include in output |
-| `format` | string | `markdown` | Format: `markdown`, `json`, `plain` |
-| `truncate` | object | — | Output truncation settings |
+Supported output formats in the current reporter are:
 
-### Output Formats
+| Value | Behavior |
+|---|---|
+| `markdown` | Markdown report |
+| `json` | JSON output |
+| `plain` | Plain text report |
+| `text` | Alias of `plain` |
+| anything else | Falls back to `markdown` |
 
-- **markdown** — Headers with step names, output as content
-- **json** — Structured JSON with step outputs
-- **plain** — Raw output without formatting
+For the exact behavior of `truncate`, including why it exists and why it currently has no effect in `goflow run`, see [Output Control](output.md).
 
 ---
 
 ## Template Variables
 
-### Input Templates
+Supported template forms:
 
 ```yaml
-prompt: "Process {{inputs.files}}"
+{{inputs.name}}
+{{steps.step-id.output}}
 ```
 
-### Step Output Templates
-
-```yaml
-prompt: "Based on: {{steps.previous-step.output}}"
-```
-
-### Template Rules
-
-- Templates are resolved before sending to the AI
-- Missing inputs cause runtime errors (unless they have defaults)
-- Missing step references (from skipped steps) resolve to empty string
-- Templates work in: `prompt`, `condition.contains`, etc.
+Step references are resolved before input references.
 
 ---
 
-## Complete Example
+## Validation Rules
 
-```yaml
-name: "full-example"
-description: "Shows all workflow features"
+The current validator checks:
 
-inputs:
-  target:
-    description: "Files to analyze"
-    default: "src/**/*.go"
-  depth:
-    description: "Analysis depth: quick, normal, detailed"
-    default: "normal"
+1. workflow name is present
+2. at least one step exists
+3. step IDs are unique
+4. every step has an agent and prompt
+5. `depends_on` only references known steps
+6. no step depends on itself
+7. condition step references exist and are upstream dependencies
+8. prompt template step references point to known steps
+9. every workflow agent entry has either `file` or `inline`
 
-config:
-  model: "gpt-4o"
-  audit_retention: 5
-  truncate:
-    strategy: "lines"
-    limit: 50
-  shared_memory:
-    enabled: true
-    inject_into_prompt: true
-
-agents:
-  analyzer:
-    inline:
-      description: "Code analyzer"
-      prompt: "You analyze code structure and patterns."
-      tools: [grep, read_file]
-  
-  reviewer:
-    file: "./agents/security-reviewer.agent.md"
-  
-  summarizer:
-    inline:
-      description: "Summarizes findings"
-      prompt: "You create executive summaries."
-
-steps:
-  - id: analyze
-    agent: analyzer
-    prompt: "Analyze {{inputs.target}} at {{inputs.depth}} depth."
-
-  - id: security-check
-    agent: reviewer
-    prompt: "Security review: {{steps.analyze.output}}"
-    depends_on: [analyze]
-
-  - id: deep-dive
-    agent: reviewer
-    prompt: "Deep security analysis required."
-    depends_on: [security-check]
-    condition:
-      step: security-check
-      contains: "CRITICAL"
-
-  - id: summary
-    agent: summarizer
-    prompt: |
-      Summarize:
-      {{steps.analyze.output}}
-      {{steps.security-check.output}}
-      {{steps.deep-dive.output}}
-    depends_on: [analyze, security-check, deep-dive]
-
-output:
-  steps: [summary]
-  format: markdown
-  truncate:
-    strategy: "chars"
-    limit: 3000
-```
+Cycle detection happens later in DAG building.
 
 ---
 
 ## See Also
 
-- [Agent File Format](agent-format.md) — `.agent.md` file structure
-- [Template Variables](templates.md) — Template syntax details
-- [CLI Reference](cli.md) — Command-line options
+- [Settings And Options](settings-and-options.md)
+- [CLI Reference](cli.md)
+- [Output Control](output.md)

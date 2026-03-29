@@ -11,7 +11,7 @@ If you haven't installed goflow yet, do it now:
 ```bash
 git clone https://github.com/alxayo/goflow.git
 cd goflow
-go build -o goflow ./cmd/goflow
+go build -o goflow ./cmd/workflow-runner/main.go
 ```
 
 ---

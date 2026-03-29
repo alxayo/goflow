@@ -33,7 +33,7 @@ cd goflow
 ### Step 2: Build the binary
 
 ```bash
-go build -o goflow ./cmd/goflow
+go build -o goflow ./cmd/workflow-runner/main.go
 ```
 
 This creates a `goflow` executable in your current directory.

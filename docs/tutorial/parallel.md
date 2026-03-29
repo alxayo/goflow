@@ -1,6 +1,6 @@
 # Parallel Execution
 
-Run multiple steps simultaneously to speed up your workflows.
+Understand how the workflow DAG exposes parallel-ready structure and what the current CLI does with it.
 
 ---
 
@@ -18,17 +18,18 @@ analyze
 
 Both `security-review` and `perf-review` depend only on `analyze` — they don't depend on each other. So why wait for one to finish before starting the other?
 
-**goflow automatically runs independent steps in parallel!**
+!!! note "Current CLI behavior"
+  The codebase contains a parallel orchestrator implementation, but the current `goflow run` command still executes the sequential orchestrator path. DAG levels are built correctly, but normal CLI runs do not yet execute same-level steps concurrently.
 
 ---
 
 ## How It Works
 
-goflow analyzes your `depends_on` declarations and builds a **DAG (Directed Acyclic Graph)** of dependencies. Steps that share the same dependencies (and don't depend on each other) run concurrently.
+goflow analyzes your `depends_on` declarations and builds a **DAG (Directed Acyclic Graph)** of dependencies. Steps that share the same dependencies (and don't depend on each other) are grouped into the same DAG level. That structure is what enables concurrent execution in the parallel orchestrator implementation.
 
-### Automatic Parallelization
+### Parallel-Ready DAG Structure
 
-You don't need to configure anything special. Just declare dependencies correctly:
+You don't need to mark steps as parallel. You declare dependencies correctly, and the DAG builder groups independent steps together:
 
 ```yaml
 steps:
@@ -63,7 +64,7 @@ analyze → security-check → performance-check → style-check → summary
 [5 steps in sequence]
 ```
 
-With parallelism (goflow's behavior):
+With a parallel runner:
 ```
 analyze →┬→ security-check ────┬→ summary
          ├→ performance-check ─┤
@@ -145,13 +146,13 @@ output:
 
 ## Viewing Parallel Execution
 
-Use `--verbose` to see which steps run in parallel:
+Use `--verbose` to see workflow progress and DAG-driven step order:
 
 ```bash
 goflow run --workflow fan-out-fan-in.yaml --mock --verbose
 ```
 
-Output shows parallel steps at the same level:
+Conceptually, a parallel runner would treat those same-level steps as a batch:
 
 ```
 [INFO] Loading workflow: fan-out-fan-in.yaml
@@ -180,7 +181,7 @@ agents:
   reviewer:
     inline:
       prompt: "You are a code reviewer."
-      tools: [shared_memory_read, shared_memory_write]
+      tools: [read_memory, write_memory]
 
 steps:
   - id: review-a
@@ -199,7 +200,7 @@ steps:
     depends_on: []
 ```
 
-With `inject_into_prompt: true`, each step automatically sees the current shared memory state.
+In the current codebase, shared-memory helpers exist, but automatic shared-memory wiring is not yet active in the main CLI path.
 
 !!! tip "When to Use Shared Memory"
     Use shared memory when parallel steps might discover related issues (e.g., one step finds a security bug that affects another module).

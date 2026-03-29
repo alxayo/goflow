@@ -2,6 +2,12 @@
 
 A step-by-step guide to building and running multi-agent AI workflows, from your first single-step workflow to advanced parallel pipelines with conditional branching, shared memory, and model selection.
 
+## Implementation Status Note
+
+This guide is tutorial-oriented. For the implementation-accurate reference to every currently supported setting and option, use [SETTINGS_REFERENCE.md](SETTINGS_REFERENCE.md).
+
+In particular, note that the current CLI path is still sequential, `config.max_concurrency` is not active in normal `goflow run`, and `output.truncate` plus shared-memory config are not yet fully wired into the main runtime.
+
 ---
 
 ## Table of Contents
