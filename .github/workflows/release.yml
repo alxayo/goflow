@@ -1,0 +1,236 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semantic version without the leading v (example: 1.2.3 or 1.2.3-rc.1)"
+        required: true
+        type: string
+      release_notes:
+        description: "Optional operator notes to prepend before the generated changelog"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Validate release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.validate.outputs.version }}
+      tag: ${{ steps.validate.outputs.tag }}
+      prerelease: ${{ steps.validate.outputs.prerelease }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate semantic version
+        id: validate
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version='${{ inputs.version }}'
+          semver_regex='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+
+          if [[ ! "$version" =~ $semver_regex ]]; then
+            echo "Version must be valid semantic versioning without a leading v, for example 1.2.3 or 1.2.3-rc.1" >&2
+            exit 1
+          fi
+
+          tag="v$version"
+          git fetch --tags --force
+
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            echo "Tag $tag already exists" >&2
+            exit 1
+          fi
+
+          prerelease=false
+          if [[ "$version" == *-* ]]; then
+            prerelease=true
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+
+      - name: Summarize release plan
+        run: |
+          {
+            echo "## Release plan"
+            echo "- Tag: ${{ steps.validate.outputs.tag }}"
+            echo "- Prerelease: ${{ steps.validate.outputs.prerelease }}"
+            echo "- Platforms: linux amd64/arm64, macOS amd64/arm64, windows amd64/arm64"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  test:
+    name: Run test suite
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run tests
+        run: go test ./...
+
+  build:
+    name: Build ${{ matrix.goos }}-${{ matrix.goarch }}
+    needs:
+      - prepare
+      - test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            archive: tar.gz
+          - goos: linux
+            goarch: arm64
+            archive: tar.gz
+          - goos: darwin
+            goarch: amd64
+            archive: tar.gz
+          - goos: darwin
+            goarch: arm64
+            archive: tar.gz
+          - goos: windows
+            goarch: amd64
+            archive: zip
+          - goos: windows
+            goarch: arm64
+            archive: zip
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build release archive
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version='${{ needs.prepare.outputs.version }}'
+          tag='${{ needs.prepare.outputs.tag }}'
+          goos='${{ matrix.goos }}'
+          goarch='${{ matrix.goarch }}'
+          archive='${{ matrix.archive }}'
+          asset_base="goflow_${version}_${goos}_${goarch}"
+          binary_name='goflow'
+
+          if [[ "$goos" == 'windows' ]]; then
+            binary_name='goflow.exe'
+          fi
+
+          rm -rf build dist
+          mkdir -p build dist
+
+          GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 \
+            go build \
+              -trimpath \
+              -ldflags "-s -w" \
+              -o "build/$binary_name" \
+              ./cmd/workflow-runner
+
+          cp README.md build/
+          if [[ -f LICENSE ]]; then
+            cp LICENSE build/
+          fi
+
+          if [[ "$archive" == 'zip' ]]; then
+            (
+              cd build
+              zip -r "../dist/${asset_base}.zip" .
+            )
+          else
+            tar -C build -czf "dist/${asset_base}.tar.gz" .
+          fi
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs:
+      - prepare
+      - build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          version='${{ needs.prepare.outputs.version }}'
+          (
+            cd dist
+            shasum -a 256 * > "goflow_${version}_checksums.txt"
+          )
+
+      - name: Prepare release notes header
+        shell: bash
+        env:
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+        run: |
+          set -euo pipefail
+
+          {
+            echo "## Release details"
+            echo "- Version: ${{ needs.prepare.outputs.tag }}"
+            echo "- Commit: ${{ github.sha }}"
+            echo "- Platforms: linux amd64/arm64, macOS amd64/arm64, windows amd64/arm64"
+            echo
+            if [[ -n "$RELEASE_NOTES" ]]; then
+              echo "## Operator notes"
+              printf '%s\n' "$RELEASE_NOTES"
+              echo
+            fi
+            echo "## Changelog"
+            echo "GitHub-generated release notes are appended below."
+          } > release-notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: goflow ${{ needs.prepare.outputs.tag }}
+          body_path: release-notes.md
+          generate_release_notes: true
+          prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
+          fail_on_unmatched_files: true
+          files: |
+            dist/*

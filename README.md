@@ -77,3 +77,16 @@ Step outputs are stored in:
 - examples/.workflow-runs/<run-id>/steps/00_security-review/output.md
 - examples/.workflow-runs/<run-id>/steps/01_perf-review/output.md
 - examples/.workflow-runs/<run-id>/steps/02_summary/output.md
+
+## Releases
+
+The repository includes a manual GitHub Actions release workflow at [.github/workflows/release.yml](.github/workflows/release.yml).
+
+From the Actions tab, run `Release` and provide a semantic version without the leading `v`, for example `1.2.3` or `1.2.3-rc.1`. The workflow will:
+
+- validate the version format and fail if the Git tag already exists
+- run `go test ./...`
+- build release archives for Linux (`amd64`, `arm64`), macOS (`amd64`, `arm64`), Windows (`amd64`), and Windows on Arm (`arm64`)
+- create a GitHub Release tagged as `v<version>`
+- upload platform archives plus a SHA-256 checksum file
+- prepend any operator notes you enter and append GitHub-generated release notes as the changelog
