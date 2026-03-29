@@ -1,0 +1,90 @@
+name: "story-writer"
+description: "Collaborative story writer with two interactive checkpoints: genre setup and mid-story twist"
+
+config:
+  model: "gpt-4.1"
+  audit_dir: ".workflow-runs"
+  audit_retention: 10
+  interactive: false
+
+agents:
+  story-setup:
+    file: "./agents/story-setup.agent.md"
+  opening-writer:
+    file: "./agents/opening-writer.agent.md"
+  twist-interviewer:
+    file: "./agents/twist-interviewer.agent.md"
+  conclusion-writer:
+    file: "./agents/conclusion-writer.agent.md"
+
+steps:
+  # Step 1: Ask the user for genre, setting, and character (interactive)
+  - id: setup
+    agent: story-setup
+    interactive: true
+    prompt: |
+      Ask the user to help you set up a short story.
+      Gather the following through conversation:
+      - Genre (fantasy, sci-fi, mystery, horror, romance, thriller, etc.)
+      - Setting (where and when the story takes place)
+      - Main character (name, brief description, key trait)
+      - Tone (dark, humorous, epic, intimate, etc.)
+
+      Summarize the story parameters when you have enough.
+
+  # Step 2: Write the opening scene based on the user's choices
+  - id: opening
+    agent: opening-writer
+    depends_on: [setup]
+    prompt: |
+      Write the opening scene of a short story with these parameters:
+
+      {{steps.setup.output}}
+
+      Write 3-4 paragraphs that:
+      - Establish the setting vividly
+      - Introduce the main character in action (not narration)
+      - Plant a subtle hook or mystery
+      - End on a moment of tension or curiosity
+
+  # Step 3: Ask the user what twist they want (interactive)
+  - id: twist
+    agent: twist-interviewer
+    depends_on: [opening]
+    interactive: true
+    prompt: |
+      Here is the opening scene of the story:
+
+      {{steps.opening.output}}
+
+      Present the opening to the user and ask what kind of twist or
+      turn they want the story to take. Offer 3-4 creative suggestions
+      but also let them propose their own idea. Confirm their choice
+      before proceeding.
+
+  # Step 4: Write the conclusion incorporating the twist
+  - id: conclusion
+    agent: conclusion-writer
+    depends_on: [opening, twist]
+    prompt: |
+      Complete this short story.
+
+      ## Story Setup
+      {{steps.setup.output}}
+
+      ## Opening Scene
+      {{steps.opening.output}}
+
+      ## Twist Direction
+      {{steps.twist.output}}
+
+      Write 4-6 paragraphs that:
+      - Continue naturally from where the opening left off
+      - Introduce the twist organically (don't force it)
+      - Build to a satisfying climax
+      - End with a memorable closing line
+      - Stay true to the genre and tone established in the setup
+
+output:
+  steps: [opening, conclusion]
+  format: "markdown"

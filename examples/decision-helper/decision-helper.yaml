@@ -1,0 +1,83 @@
+name: "decision-helper"
+description: "Interactive pros/cons analyzer: ask the user about a decision, argue both sides in parallel, then synthesize a recommendation"
+
+config:
+  model: "gpt-4.1"
+  audit_dir: ".workflow-runs"
+  audit_retention: 10
+  interactive: false
+
+agents:
+  interviewer:
+    file: "./agents/interviewer.agent.md"
+  advocate:
+    file: "./agents/advocate.agent.md"
+  critic:
+    file: "./agents/critic.agent.md"
+  synthesizer:
+    file: "./agents/synthesizer.agent.md"
+
+steps:
+  # Step 1: Ask the user to describe their decision (interactive)
+  - id: gather-context
+    agent: interviewer
+    interactive: true
+    prompt: |
+      Ask the user what decision they are facing.
+      Gather enough context to understand:
+      - What the two (or more) options are
+      - Why they are hesitating
+      - Any constraints (time, money, career, relationships, etc.)
+      - What outcome matters most to them
+
+      Have a brief conversation to clarify the decision.
+      When you have enough context, summarize the decision and key factors.
+
+  # Step 2a: Argue FOR the decision (runs in parallel with step 2b)
+  - id: argue-for
+    agent: advocate
+    depends_on: [gather-context]
+    prompt: |
+      The user is facing this decision:
+
+      {{steps.gather-context.output}}
+
+      Argue strongly IN FAVOR of going ahead with the main option.
+      Present compelling reasons, evidence, and potential upsides.
+      Be persuasive but honest — acknowledge what you're glossing over.
+
+  # Step 2b: Argue AGAINST the decision (runs in parallel with step 2a)
+  - id: argue-against
+    agent: critic
+    depends_on: [gather-context]
+    prompt: |
+      The user is facing this decision:
+
+      {{steps.gather-context.output}}
+
+      Argue strongly AGAINST the main option.
+      Present risks, downsides, opportunity costs, and cautionary evidence.
+      Be persuasive but honest — acknowledge what the other side might say.
+
+  # Step 3: Synthesize both arguments into a balanced recommendation
+  - id: synthesize
+    agent: synthesizer
+    depends_on: [argue-for, argue-against]
+    prompt: |
+      The user's decision context:
+      {{steps.gather-context.output}}
+
+      ## Arguments FOR
+      {{steps.argue-for.output}}
+
+      ## Arguments AGAINST
+      {{steps.argue-against.output}}
+
+      Synthesize both perspectives into a balanced, actionable recommendation.
+      Highlight the strongest points from each side.
+      End with a clear recommendation and the key question the user should
+      ask themselves to make the final call.
+
+output:
+  steps: [synthesize]
+  format: "markdown"

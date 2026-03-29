@@ -1,0 +1,134 @@
+name: "guided-code-review"
+description: "Interactive code review: user scopes the review, security and performance agents run in parallel, user picks findings to deep-dive, then final report"
+
+inputs:
+  files:
+    description: "Files or directories to review"
+    default: "."
+
+config:
+  model: "gpt-4.1"
+  audit_dir: ".workflow-runs"
+  audit_retention: 10
+  interactive: false
+
+agents:
+  scoper:
+    file: "./agents/scoper.agent.md"
+  security-reviewer:
+    file: "./agents/security-reviewer.agent.md"
+  performance-reviewer:
+    file: "./agents/performance-reviewer.agent.md"
+  deep-diver:
+    file: "./agents/deep-diver.agent.md"
+  report-writer:
+    file: "./agents/report-writer.agent.md"
+
+steps:
+  # Step 1: Ask the user what to focus on (interactive)
+  - id: scope
+    agent: scoper
+    interactive: true
+    prompt: |
+      Ask the user about the code review they want to perform.
+      Determine:
+      - Which files or areas to focus on (they may say "{{inputs.files}}" or be more specific)
+      - What concerns they have (security? performance? readability? all?)
+      - Any known issues or areas they're worried about
+      - The context (is this a PR review? audit? refactor prep?)
+
+      Summarize the review scope when ready.
+
+  # Step 2a: Security review (parallel)
+  - id: review-security
+    agent: security-reviewer
+    depends_on: [scope]
+    prompt: |
+      Perform a security-focused code review.
+
+      ## Review Scope
+      {{steps.scope.output}}
+
+      Review the code for:
+      - Input validation and sanitization
+      - Authentication and authorization issues
+      - Injection vulnerabilities (SQL, command, path traversal)
+      - Secrets or credentials in code
+      - Insecure dependencies
+      - OWASP Top 10 issues
+
+      Rate each finding as CRITICAL, HIGH, MEDIUM, or LOW.
+
+  # Step 2b: Performance review (parallel)
+  - id: review-performance
+    agent: performance-reviewer
+    depends_on: [scope]
+    prompt: |
+      Perform a performance-focused code review.
+
+      ## Review Scope
+      {{steps.scope.output}}
+
+      Review the code for:
+      - Algorithmic inefficiencies (O(n²) where O(n) is possible, etc.)
+      - Memory leaks or excessive allocations
+      - N+1 query patterns
+      - Missing caching opportunities
+      - Blocking operations that could be async
+      - Resource cleanup (file handles, connections, etc.)
+
+      Rate each finding as CRITICAL, HIGH, MEDIUM, or LOW.
+
+  # Step 3: Ask the user which findings to deep-dive on (interactive)
+  - id: select-deep-dive
+    agent: deep-diver
+    depends_on: [review-security, review-performance]
+    interactive: true
+    prompt: |
+      Present a summary of findings from both reviews to the user.
+
+      ## Security Findings
+      {{steps.review-security.output}}
+
+      ## Performance Findings
+      {{steps.review-performance.output}}
+
+      List all findings as numbered items with their severity.
+      Ask the user which findings they want to deep-dive on.
+      They can pick specific numbers or say "all CRITICAL" etc.
+
+      For each selected finding, provide:
+      - Detailed explanation of the issue
+      - Exact code location and what's wrong
+      - Recommended fix with code examples
+      - Impact if left unfixed
+
+  # Step 4: Final report
+  - id: final-report
+    agent: report-writer
+    depends_on: [select-deep-dive]
+    prompt: |
+      Create a final code review report.
+
+      ## Review Scope
+      {{steps.scope.output}}
+
+      ## Security Review
+      {{steps.review-security.output}}
+
+      ## Performance Review
+      {{steps.review-performance.output}}
+
+      ## Deep-Dive Analysis
+      {{steps.select-deep-dive.output}}
+
+      Produce a clean, actionable final report that:
+      - Summarizes the overall code health
+      - Lists all findings sorted by severity
+      - Highlights the deep-dived items with detailed fixes
+      - Provides a prioritized action plan
+      - Gives an overall assessment (approve / approve with changes / request changes)
+
+output:
+  steps: [final-report]
+  format: "markdown"

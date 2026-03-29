@@ -1,0 +1,147 @@
+name: "linkedin-post-creator"
+description: "Interactive LinkedIn post creator: gather ideas, generate 3 draft variants (long, short, creative) in parallel, let user pick and refine, optionally generate an image prompt, and deliver the final post"
+
+config:
+  model: "gpt-4.1"
+  audit_dir: ".workflow-runs"
+  audit_retention: 10
+  interactive: false
+
+agents:
+  context-gatherer:
+    file: "./agents/context-gatherer.agent.md"
+  long-form-writer:
+    file: "./agents/long-form-writer.agent.md"
+  short-form-writer:
+    file: "./agents/short-form-writer.agent.md"
+  creative-writer:
+    file: "./agents/creative-writer.agent.md"
+  post-selector:
+    file: "./agents/post-selector.agent.md"
+  image-creator:
+    file: "./agents/image-creator.agent.md"
+  post-finalizer:
+    file: "./agents/post-finalizer.agent.md"
+
+steps:
+  # Step 1: Gather the user's ideas, resources, and target message (interactive)
+  - id: gather-context
+    agent: context-gatherer
+    interactive: true
+    prompt: |
+      Help the user articulate the LinkedIn post they want to create.
+      Ask about:
+      - The main topic or idea for the post
+      - Any resources, links, or references they want to include
+      - Key takeaways or message they want the reader to walk away with
+      - Target audience within the tech community (developers, engineering managers, founders, etc.)
+      - Any personal experience or story they want to weave in
+      - Hashtags or mentions they want to include
+
+      Have a brief conversation to clarify, then summarize everything.
+
+  # Step 2a: Long-form draft (~200-300 words, storytelling style)
+  - id: draft-long
+    agent: long-form-writer
+    depends_on: [gather-context]
+    prompt: |
+      Write a LONG-FORM LinkedIn post based on these ideas:
+
+      {{steps.gather-context.output}}
+
+      Target: technical community. Tone: professional but engaging, with a touch of humor.
+      Length: 200-300 words (the kind that makes people click "...see more" and keep reading).
+
+  # Step 2b: Short-form draft (~80-120 words, punchy and direct)
+  - id: draft-short
+    agent: short-form-writer
+    depends_on: [gather-context]
+    prompt: |
+      Write a SHORT-FORM LinkedIn post based on these ideas:
+
+      {{steps.gather-context.output}}
+
+      Target: technical community. Tone: professional but engaging, with a touch of humor.
+      Length: 80-120 words (punchy, scroll-stopping, high signal-to-noise ratio).
+
+  # Step 2c: Creative/unconventional draft (unexpected angle or format)
+  - id: draft-creative
+    agent: creative-writer
+    depends_on: [gather-context]
+    prompt: |
+      Write a CREATIVE LinkedIn post based on these ideas:
+
+      {{steps.gather-context.output}}
+
+      Target: technical community. Tone: professional but engaging, with a twist of fun.
+      Take an unexpected angle — maybe a hot take, a story format, a listicle with
+      personality, a "what I learned the hard way" framing, or something that bends
+      the typical LinkedIn format. Make people stop scrolling.
+
+  # Step 3: Present all 3 drafts, let user pick and refine (interactive)
+  - id: choose-version
+    agent: post-selector
+    depends_on: [draft-long, draft-short, draft-creative]
+    interactive: true
+    prompt: |
+      Present these 3 LinkedIn post drafts to the user:
+
+      ## Option 1: Long-Form (Storytelling)
+      {{steps.draft-long.output}}
+
+      ## Option 2: Short-Form (Punchy)
+      {{steps.draft-short.output}}
+
+      ## Option 3: Creative (Unexpected Angle)
+      {{steps.draft-creative.output}}
+
+      Ask the user to:
+      1. Pick their favorite (or mix elements from multiple)
+      2. Provide any feedback or changes they want
+      3. Confirm the tone and style feel right
+
+      Then ask: "Would you like me to generate an image suggestion for this post? (yes/no)"
+
+      Apply their feedback and produce the refined version.
+      At the end of your output, include exactly one of these lines:
+      - IMAGE: YES
+      - IMAGE: NO
+
+  # Step 4: Generate an image prompt/concept for the post
+  - id: create-image
+    agent: image-creator
+    depends_on: [choose-version]
+    condition:
+      step: choose-version
+      contains: "IMAGE: YES"
+    prompt: |
+      Create an image concept for this LinkedIn post:
+
+      {{steps.choose-version.output}}
+
+      The image should complement the post, be professional enough for LinkedIn,
+      and help the post stand out in the feed.
+
+  # Step 5: Assemble the final post ready to copy-paste into LinkedIn
+  - id: finalize
+    agent: post-finalizer
+    depends_on: [choose-version, create-image]
+    prompt: |
+      Produce the final LinkedIn post ready for publishing.
+
+      ## User's Original Ideas
+      {{steps.gather-context.output}}
+
+      ## Chosen & Refined Post
+      {{steps.choose-version.output}}
+
+      ## Image Concept (if generated)
+      {{steps.create-image.output}}
+
+      Deliver the final, polished, copy-paste-ready LinkedIn post.
+      If an image concept was generated, include it clearly.
+      If no image was requested, skip the image section.
+
+output:
+  steps: [finalize]
+  format: "markdown"

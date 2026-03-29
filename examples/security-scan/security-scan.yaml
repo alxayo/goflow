@@ -1,0 +1,193 @@
+name: "security-scan"
+description: "Multi-scanner security audit with parallel scanning, consolidated reporting, and remediation planning"
+
+inputs:
+  target:
+    description: "Directory to scan"
+    default: "."
+  severity:
+    description: "Minimum severity to report (CRITICAL, HIGH, MEDIUM, LOW)"
+    default: "MEDIUM"
+
+config:
+  model: "gpt-4.1"
+  audit_dir: ".workflow-runs"
+  audit_retention: 5
+  max_concurrency: 5
+  interactive: false
+  shared_memory:
+    enabled: false
+
+agents:
+  discovery:
+    file: "./agents/discovery.agent.md"
+  bandit-scanner:
+    file: "./agents/bandit-scanner.agent.md"
+  guarddog-scanner:
+    file: "./agents/guarddog-scanner.agent.md"
+  shellcheck-scanner:
+    file: "./agents/shellcheck-scanner.agent.md"
+  graudit-scanner:
+    file: "./agents/graudit-scanner.agent.md"
+  trivy-scanner:
+    file: "./agents/trivy-scanner.agent.md"
+  security-aggregator:
+    file: "./agents/security-aggregator.agent.md"
+  remediation-planner:
+    file: "./agents/remediation-planner.agent.md"
+
+skills:
+  - "./skills/bandit-security-scan/SKILL.md"
+  - "./skills/guarddog-security-scan/SKILL.md"
+  - "./skills/shellcheck-security-scan/SKILL.md"
+  - "./skills/graudit-security-scan/SKILL.md"
+  - "./skills/trivy-security-scan/SKILL.md"
+
+steps:
+  # --- Discovery: classify files and check tool availability ---
+
+  - id: discover
+    agent: discovery
+    prompt: |
+      Scan the target directory "{{inputs.target}}" and produce a discovery report:
+
+      1. List all files grouped by language/type (Python, JS/TS, Shell, Go, etc.)
+      2. Check which security tools are installed: bandit, guarddog, shellcheck, graudit, trivy
+      3. Identify dependency files (requirements.txt, package.json, package-lock.json, go.mod, Gemfile.lock, etc.)
+      4. Note any Dockerfiles, Terraform files (.tf), Kubernetes manifests, or CI/CD configs
+      5. Count total files and estimate project size
+
+      Report findings in a structured format so downstream scanners can decide what to scan.
+
+  # --- Fan-out: 5 parallel security scans ---
+
+  - id: scan-python
+    agent: bandit-scanner
+    prompt: |
+      Run Bandit security analysis on Python files in "{{inputs.target}}".
+      Minimum severity filter: {{inputs.severity}}.
+
+      Discovery context:
+      {{steps.discover.output}}
+    depends_on: [discover]
+    on_error: continue
+    condition:
+      step: discover
+      contains: "[RUN:BANDIT]"
+
+  - id: scan-supply-chain
+    agent: guarddog-scanner
+    prompt: |
+      Run GuardDog supply chain security scan on "{{inputs.target}}".
+
+      Discovery context:
+      {{steps.discover.output}}
+
+      Scan any requirements.txt, package.json, or package-lock.json found.
+    depends_on: [discover]
+    on_error: continue
+    condition:
+      step: discover
+      contains: "[RUN:GUARDDOG]"
+
+  - id: scan-shell
+    agent: shellcheck-scanner
+    prompt: |
+      Run ShellCheck analysis on shell scripts in "{{inputs.target}}".
+
+      Discovery context:
+      {{steps.discover.output}}
+
+      Scan all .sh and .bash files. Also check for shell code in Dockerfiles if present.
+    depends_on: [discover]
+    on_error: continue
+    condition:
+      step: discover
+      contains: "[RUN:SHELLCHECK]"
+
+  - id: scan-patterns
+    agent: graudit-scanner
+    prompt: |
+      Run Graudit pattern-based security scan on "{{inputs.target}}".
+
+      Discovery context:
+      {{steps.discover.output}}
+
+      Execute scans with these databases in order:
+      1. "exec" - command injection, reverse shells, system calls
+      2. "secrets" - hardcoded credentials, API keys, tokens
+      3. Language-specific database if a dominant language is detected
+    depends_on: [discover]
+    on_error: continue
+    condition:
+      step: discover
+      contains: "[RUN:GRAUDIT]"
+
+  - id: scan-vulnerabilities
+    agent: trivy-scanner
+    prompt: |
+      Run Trivy filesystem security scan on "{{inputs.target}}".
+      Minimum severity filter: {{inputs.severity}}.
+
+      Discovery context:
+      {{steps.discover.output}}
+
+      Scan for:
+      1. Known vulnerabilities (CVEs) in dependencies
+      2. Hardcoded secrets (API keys, passwords, tokens)
+      3. IaC misconfigurations (Terraform, Kubernetes, Dockerfile) if detected
+    depends_on: [discover]
+    on_error: continue
+    condition:
+      step: discover
+      contains: "[RUN:TRIVY]"
+
+  # --- Fan-in: aggregate all findings ---
+
+  - id: aggregate
+    agent: security-aggregator
+    prompt: |
+      Combine all security scan results into a unified report.
+      Deduplicate findings that appear across multiple scanners.
+      Normalize severity levels to: CRITICAL, HIGH, MEDIUM, LOW, INFO.
+      Only include findings at or above: {{inputs.severity}}.
+
+      ## Bandit (Python Security)
+      {{steps.scan-python.output}}
+
+      ## GuardDog (Supply Chain)
+      {{steps.scan-supply-chain.output}}
+
+      ## ShellCheck (Shell Scripts)
+      {{steps.scan-shell.output}}
+
+      ## Graudit (Pattern Matching)
+      {{steps.scan-patterns.output}}
+
+      ## Trivy (CVEs / Secrets / IaC)
+      {{steps.scan-vulnerabilities.output}}
+    depends_on:
+      - scan-python
+      - scan-supply-chain
+      - scan-shell
+      - scan-patterns
+      - scan-vulnerabilities
+
+  # --- Remediation planning ---
+
+  - id: remediation-plan
+    agent: remediation-planner
+    prompt: |
+      Generate a prioritized remediation plan from these security findings.
+      Group fixes by severity. Include fix patterns, SLA timelines, and verification steps.
+
+      Security scan results:
+      {{steps.aggregate.output}}
+    depends_on: [aggregate]
+
+output:
+  steps: [aggregate, remediation-plan]
+  format: "markdown"
+  truncate:
+    strategy: "chars"
+    limit: 8000
