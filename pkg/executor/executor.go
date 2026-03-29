@@ -157,6 +157,7 @@ func (se *StepExecutor) writeSkippedAudit(step workflow.Step, agent *agents.Agen
 		DependsOn:    step.DependsOn,
 		Condition:    step.Condition,
 		ConditionMet: &condMet,
+		Interactive:  se.Interactive,
 	}
 	_ = sl.WriteStepMeta(meta)
 }
@@ -183,6 +184,7 @@ func (se *StepExecutor) writeFailedAudit(sl *audit.StepLogger, step workflow.Ste
 		ConditionMet: &condMet,
 		SessionID:    result.SessionID,
 		Error:        result.ErrorMsg,
+		Interactive:  se.Interactive,
 	}
 	_ = sl.WriteStepMeta(meta)
 }
@@ -205,6 +207,7 @@ func (se *StepExecutor) writeCompletedAudit(sl *audit.StepLogger, step workflow.
 		Condition:    step.Condition,
 		ConditionMet: &condMet,
 		SessionID:    result.SessionID,
+		Interactive:  se.Interactive,
 	}
 	_ = sl.WriteStepMeta(meta)
 }
