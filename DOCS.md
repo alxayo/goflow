@@ -1,12 +1,12 @@
-# Workflow Runner — User Guide
+# goflow — User Guide
 
-A comprehensive guide to understanding, configuring, and building workflows with Workflow Runner: an AI orchestration engine that coordinates multi-agent LLM workflows using the Copilot SDK.
+A comprehensive guide to understanding, configuring, and building workflows with goflow: an AI orchestration engine that coordinates multi-agent LLM workflows using the Copilot SDK.
 
 ---
 
 ## Table of Contents
 
-1. [What Is Workflow Runner?](#1-what-is-workflow-runner)
+1. [What Is goflow?](#1-what-is-goflow)
 2. [How It Works](#2-how-it-works)
    - [Architecture Overview](#architecture-overview)
    - [Execution Flow](#execution-flow)
@@ -55,9 +55,9 @@ A comprehensive guide to understanding, configuring, and building workflows with
 
 ---
 
-## 1. What Is Workflow Runner?
+## 1. What Is goflow?
 
-Workflow Runner is a command-line tool that orchestrates multi-step AI agent pipelines. Instead of manually running one agent after another and copy-pasting outputs, you define a workflow in YAML that describes:
+goflow is a command-line tool that orchestrates multi-step AI agent pipelines. Instead of manually running one agent after another and copy-pasting outputs, you define a workflow in YAML that describes:
 
 - **Which agents** to use (security reviewer, performance auditor, aggregator, etc.)
 - **What prompts** to send to each agent
@@ -87,7 +87,7 @@ The engine parses your workflow, builds a dependency graph (DAG), resolves agent
 
 ### Architecture Overview
 
-Workflow Runner is built from modular components, each with a single responsibility:
+goflow is built from modular components, each with a single responsibility:
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -133,7 +133,7 @@ Workflow Runner is built from modular components, each with a single responsibil
 
 ### Execution Flow
 
-When you run `workflow-runner run --workflow my-pipeline.yaml`, this is what happens:
+When you run `goflow run --workflow my-pipeline.yaml`, this is what happens:
 
 ```
 1. Parse YAML            → Workflow struct
@@ -204,10 +204,10 @@ Both modes process levels in order — only steps within the same level can over
 
 ```bash
 cd ~/Code/workflow-runner
-go build -o workflow-runner ./cmd/workflow-runner/main.go
+go build -o goflow ./cmd/workflow-runner/main.go
 ```
 
-This produces a `workflow-runner` binary in the current directory.
+This produces a `goflow` binary in the current directory.
 
 ### Verify Copilot CLI
 
@@ -228,7 +228,7 @@ If Copilot CLI is not available, you can still test workflows using `--mock` mod
 ### Syntax
 
 ```
-workflow-runner run [options]
+goflow run [options]
 ```
 
 ### Options
@@ -248,10 +248,10 @@ Inputs declared in the workflow YAML can have defaults. CLI `--inputs` values ov
 
 ```bash
 # Override the "files" input, use default for everything else
-workflow-runner run --workflow pipeline.yaml --inputs files='src/**/*.go'
+goflow run --workflow pipeline.yaml --inputs files='src/**/*.go'
 
 # Multiple inputs
-workflow-runner run --workflow pipeline.yaml \
+goflow run --workflow pipeline.yaml \
   --inputs files='src/**/*.go' \
   --inputs severity_filter='HIGH'
 ```
@@ -450,7 +450,7 @@ steps:
 
 #### How Sequence and Parallelism Are Expressed in YAML
 
-Workflow Runner does not use an explicit field such as `parallel: true` or `sequential: true`.
+goflow does not use an explicit field such as `parallel: true` or `sequential: true`.
 
 Instead, execution order is inferred from each step's `depends_on` list:
 
@@ -654,7 +654,7 @@ Handoffs are parsed and stored as metadata. They are not currently used for DAG 
 
 ### Agent Discovery
 
-Workflow Runner searches for agent files in multiple locations, with a defined priority. Higher-priority locations overwrite lower ones when agents share the same name.
+goflow searches for agent files in multiple locations, with a defined priority. Higher-priority locations overwrite lower ones when agents share the same name.
 
 **Priority order (highest → lowest):**
 
@@ -674,11 +674,11 @@ Tool names differ across platforms that use the `.agent.md` format:
 
 | Platform | Naming Style | Example |
 |---|---|---|
-| **Copilot CLI** (used by workflow-runner) | lowercase | `grep`, `view`, `bash` |
+| **Copilot CLI** (used by goflow) | lowercase | `grep`, `view`, `bash` |
 | **VS Code** | `category/toolName` or set name | `search/textSearch`, `read/readFile`, or `search` |
 | **Claude Code** | PascalCase | `Read`, `Grep`, `Bash` |
 
-When authoring agent files for workflow-runner, use **Copilot CLI tool names** — these are the names passed to the CLI's `--available-tools` flag.
+When authoring agent files for goflow, use **Copilot CLI tool names** — these are the names passed to the CLI's `--available-tools` flag.
 
 ### Claude-Format Compatibility
 
@@ -970,7 +970,7 @@ Set to `0` to keep all runs (no automatic cleanup).
 
 ## 12. Interactive Mode — Clarification Questions
 
-By default, Workflow Runner runs every step in **non-interactive mode**: the Copilot CLI flag `--no-ask-user` is passed, and agents cannot pause to ask the user for input. Interactive mode lifts this restriction, allowing agents to ask clarification questions mid-execution and wait for your response in the terminal.
+By default, goflow runs every step in **non-interactive mode**: the Copilot CLI flag `--no-ask-user` is passed, and agents cannot pause to ask the user for input. Interactive mode lifts this restriction, allowing agents to ask clarification questions mid-execution and wait for your response in the terminal.
 
 ### How It Works
 
@@ -998,7 +998,7 @@ A step is interactive if **any** of the three levels enables it and no higher-pr
 **CLI flag:**
 
 ```bash
-workflow-runner run --workflow pipeline.yaml --interactive
+goflow run --workflow pipeline.yaml --interactive
 ```
 
 **Workflow config:**
@@ -1060,7 +1060,7 @@ The `step.meta.json` file includes an `interactive` field (`true`/`false`) that 
 Mock mode lets you validate workflow structure, DAG ordering, template resolution, and conditions without calling the Copilot CLI or any LLM.
 
 ```bash
-workflow-runner run --workflow pipeline.yaml --mock --verbose
+goflow run --workflow pipeline.yaml --mock --verbose
 ```
 
 In mock mode:
@@ -1195,7 +1195,7 @@ output:
 Validate the workflow structure before using real LLM calls:
 
 ```bash
-workflow-runner run --workflow my-pipeline.yaml --mock --verbose
+goflow run --workflow my-pipeline.yaml --mock --verbose
 ```
 
 Check:
@@ -1209,7 +1209,7 @@ Check:
 Once validated, run with the real executor:
 
 ```bash
-workflow-runner run --workflow my-pipeline.yaml \
+goflow run --workflow my-pipeline.yaml \
   --inputs files='src/**/*.go' \
   --verbose
 ```

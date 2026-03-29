@@ -1,8 +1,8 @@
-# AI Workflow Runner — Feasibility Analysis & Plan
+# goflow — Feasibility Analysis & Plan
 
 ## Executive Summary
 
-**Verdict: Feasible, with caveats.** The Copilot SDK provides all the core primitives needed to build a YAML-driven workflow runner with fan-out/fan-in, conditional branching, and agent orchestration. However, the SDK does not provide a built-in workflow engine — you must build the orchestration layer yourself on top of the session/tool/agent primitives. The good news: nothing in the SDK's architecture blocks this.
+**Verdict: Feasible, with caveats.** The Copilot SDK provides all the core primitives needed to build a YAML-driven goflow with fan-out/fan-in, conditional branching, and agent orchestration. However, the SDK does not provide a built-in workflow engine — you must build the orchestration layer yourself on top of the session/tool/agent primitives. The good news: nothing in the SDK's architecture blocks this.
 
 ---
 
@@ -98,7 +98,7 @@ implement in Phase 1.
                    │
                    ▼
 ┌──────────────────────────────────────────────────────┐
-│              Workflow Runner (Go binary)              │
+│                  goflow (Go binary)                   │
 │                                                       │
 │  ┌─────────────┐  ┌──────────────┐  ┌─────────────┐ │
 │  │ YAML Parser  │  │ DAG Builder  │  │  Executor    │ │
@@ -286,14 +286,14 @@ output:
 
 ### Agent File Format (`.agent.md`) — Full VS Code Compatibility
 
-The workflow runner must parse `.agent.md` files exactly as VS Code defines them
+goflow must parse `.agent.md` files exactly as VS Code defines them
 (see [VS Code Custom Agents docs](https://code.visualstudio.com/docs/copilot/customization/custom-agents)).
 This ensures agents are reusable between interactive VS Code sessions and
 automated workflow runs.
 
 #### Supported Frontmatter Fields
 
-| Field | Type | Required | Workflow Runner Mapping |
+| Field | Type | Required | goflow Mapping |
 |---|---|---|---|
 | `name` | string | No (defaults to filename) | Step display name, audit log labels |
 | `description` | string | No | Logged in audit trail; used for agent selection context |
@@ -302,7 +302,7 @@ automated workflow runs.
 | `agents` | string[] | No | Lists subagent names this agent can invoke. `*` = all, `[]` = none. Mapped to SDK `customAgents` on the session. |
 | `model` | string or string[] | No | Overrides `config.model` for this step. If array, first available model is used. |
 | `user-invocable` | bool | No | Ignored (interactive-only; all workflow agents are invoked programmatically) |
-| `disable-model-invocation` | bool | No | Ignored (workflow runner controls invocation, not LLM inference) |
+| `disable-model-invocation` | bool | No | Ignored (goflow controls invocation, not LLM inference) |
 | `target` | string | No | Ignored (`vscode` or `github-copilot` — not relevant for SDK execution) |
 | `mcp-servers` | object | No | Passed through to SDK `SessionConfig.McpServers` (per-agent MCP config) |
 | `handoffs` | list | No | **Supported.** Defines workflow transitions — see "Handoffs as Workflow Edges" below. |
@@ -351,7 +351,7 @@ Provide severity ratings: CRITICAL, HIGH, MEDIUM, LOW.
 
 #### Agent Discovery Paths
 
-The workflow runner searches for `.agent.md` files in the same locations VS Code
+goflow searches for `.agent.md` files in the same locations VS Code
 uses, plus explicit paths from the workflow YAML:
 
 | Source | Path | Priority |
@@ -488,7 +488,7 @@ folder. This is critical for transparency and debugging.
   any transcript file to monitor a step live.
 - **Sequence numbering:** Step folders are prefixed with a two-digit sequence
   number based on execution order. Parallel steps share the same number.
-- **Interactive monitoring:** A companion `workflow-runner watch` command tails
+- **Interactive monitoring:** A companion `goflow watch` command tails
   all active step transcripts in a multiplexed terminal view (one pane per
   active parallel step).
 - **Structured metadata:** `step.meta.json` records:
@@ -634,9 +634,9 @@ workflow-runner/
 
 ```
 1. CLI parses command:
-   - `workflow-runner run --workflow file.yaml [--inputs file=src/main.go --inputs branch=feature/x] [--audit-dir ./runs]`
-   - `workflow-runner watch --run <run-dir>`  (live monitoring)
-   - `workflow-runner resume --run <run-dir> --step <step-id>`  (resume from checkpoint)
+   - `goflow run --workflow file.yaml [--inputs file=src/main.go --inputs branch=feature/x] [--audit-dir ./runs]`
+   - `goflow watch --run <run-dir>`  (live monitoring)
+   - `goflow resume --run <run-dir> --step <step-id>`  (resume from checkpoint)
    
 2. Load & validate workflow YAML
 
@@ -781,7 +781,7 @@ steps:
 - [ ] Sequential step execution (no parallelism)
 - [ ] Simple `{{steps.X.output}}` template resolution
 - [ ] Basic audit logging (audit directory, step folders, output.md, step.meta.json)
-- [ ] Basic CLI: `workflow-runner run --workflow file.yaml`
+- [ ] Basic CLI: `goflow run --workflow file.yaml`
 - [ ] Example workflow: 3-step sequential pipeline
 
 ### Phase 2 — Parallelism & Fan-Out/Fan-In
@@ -795,7 +795,7 @@ steps:
 ### Phase 3 — Audit Trail & Monitoring
 - [ ] Full transcript logging (transcript.jsonl — every session event)
 - [ ] Tool call logging (tool_calls.jsonl)
-- [ ] Real-time monitoring: `workflow-runner watch --run <dir>` (multiplexed tail)
+- [ ] Real-time monitoring: `goflow watch --run <dir>` (multiplexed tail)
 - [ ] Errors log per step
 - [ ] DAG visualization (dag.dot export)
 
@@ -831,7 +831,7 @@ steps:
 
 2. **No guaranteed structured output.** LLM outputs are natural language. Conditions that depend on exact string matching can be brittle. Mitigation: careful prompt engineering + LLM-based classification as fallback.
 
-3. **No native VS Code UI integration.** This runner is a standalone CLI tool. It reads the same `.agent.md` and `SKILL.md` files as VS Code, but it doesn't integrate with VS Code's chat panel. It's complementary — you author agents in VS Code, run them at scale with the workflow runner.
+3. **No native VS Code UI integration.** This runner is a standalone CLI tool. It reads the same `.agent.md` and `SKILL.md` files as VS Code, but it doesn't integrate with VS Code's chat panel. It's complementary — you author agents in VS Code, run them at scale with goflow.
 
 4. **Single CLI process bottleneck.** All sessions share one Copilot CLI server process. Under heavy parallel load, this could become a bottleneck. Mitigation: TCP mode with multiple CLI servers, or concurrency limits. **(Verify during Phase 1 via `--cli-concurrency-test` flag.)**
 

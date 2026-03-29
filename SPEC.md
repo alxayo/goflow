@@ -1,4 +1,4 @@
-# Workflow Runner — Technical Specification & Implementation Plan
+# goflow — Technical Specification & Implementation Plan
 
 > **Scope:** Phase 1 (MVP) + Phase 2 (Parallelism). Phases 3–6 are outlined but not
 > broken down into commit-level tasks.
@@ -296,7 +296,7 @@ pkg/reporter/.gitkeep
 **`.gitignore`:**
 ```gitignore
 # Binaries
-workflow-runner
+goflow
 *.exe
 
 # IDE
@@ -1316,7 +1316,7 @@ Plain:
 ```go
 func main() {
 	// Parse CLI flags:
-	//   workflow-runner run --workflow <path> [--inputs key=value ...] [--audit-dir <dir>]
+	//   goflow run --workflow <path> [--inputs key=value ...] [--audit-dir <dir>]
 
 	// 1. Parse --workflow flag (required)
 	// 2. Parse --inputs flags (repeated key=value pairs)
@@ -1337,7 +1337,7 @@ func main() {
 **CLI interface (using standard `flag` package for MVP):**
 
 ```
-Usage: workflow-runner run [options]
+Usage: goflow run [options]
 
 Options:
   --workflow    Path to workflow YAML file (required)
@@ -1639,7 +1639,7 @@ specified after Phase 1 and 2 are implemented and learnings are captured.
 
 - Full transcript logging (`transcript.jsonl` — every session event via `session.On()`)
 - Tool call logging (`tool_calls.jsonl`)
-- `workflow-runner watch --run <dir>` — multiplexed live monitoring
+- `goflow watch --run <dir>` — multiplexed live monitoring
 - Per-step `errors.log`
 - DAG visualization export (`dag.dot` for Graphviz)
 

@@ -1,8 +1,8 @@
-# Research: LangChain Support for Workflow Runner
+# Research: LangChain Support for goflow
 
 ## 1. Problem Statement
 
-The workflow-runner currently depends on the Copilot CLI as its sole execution backend. This creates three constraints:
+The goflow currently depends on the Copilot CLI as its sole execution backend. This creates three constraints:
 
 1. **No offline/on-prem support** — Copilot CLI requires GitHub authentication and internet access.
 2. **Single provider** — All steps run through GitHub Models; no option to use Anthropic, local Ollama, vLLM, or other providers directly.
@@ -261,7 +261,7 @@ The LLM decides when to call tools. The executor runs a loop: send prompt → LL
 
 **Community workaround:** A third-party adapter ([langchaingo-mcp-adapter](https://github.com/i2y/langchaingo-mcp-adapter)) bridges `mcp-go` (a standalone MCP client library) to LangChain's `tools.Tool` interface. It inlines MCP tool JSON schemas into tool descriptions. Users in the issue thread describe it as functional but "a kludge".
 
-**Impact for workflow-runner:** If workflows rely on MCP servers (e.g., Playwright MCP for Yahoo News scraping), switching to LangChain means:
+**Impact for goflow:** If workflows rely on MCP servers (e.g., Playwright MCP for Yahoo News scraping), switching to LangChain means:
 1. Adding `mcp-go` as a dependency to act as the MCP client.
 2. Writing an adapter (~100 lines) that converts MCP tool schemas to `llms.Tool` / `tools.Tool` for LangChain's function calling.
 3. Managing MCP server process lifecycle (start/stop) ourselves — Copilot CLI handles this automatically.
@@ -314,13 +314,13 @@ func (s *LangChainSession) buildSystemPrompt(agentPrompt string, skills []string
 }
 ```
 
-**No LangChain-specific support is needed** — skill injection happens in the workflow-runner executor layer, before the prompt reaches LangChain. The existing `pkg/agents/` loader already parses SKILL references; they just need to be concatenated into the system prompt.
+**No LangChain-specific support is needed** — skill injection happens in the goflow executor layer, before the prompt reaches LangChain. The existing `pkg/agents/` loader already parses SKILL references; they just need to be concatenated into the system prompt.
 
 ### 6.3 Hooks (`onPreToolUse` / `onPostToolUse`)
 
 **LangChain's `callbacks.Handler` interface is MORE capable than VS Code hooks.**
 
-The current workflow-runner `HooksConfig` (in `pkg/agents/types.go`) supports:
+The current goflow `HooksConfig` (in `pkg/agents/types.go`) supports:
 
 ```go
 type HooksConfig struct {
@@ -480,7 +480,7 @@ pkg/executor/
 | L3.1 | Codebase indexer: walk files, chunk, embed via Ollama `nomic-embed-text` | ~150 lines |
 | L3.2 | In-memory vector store (or Chroma integration) | ~80 lines |
 | L3.3 | `semantic_search` tool implementation (query → top-K results) | ~50 lines |
-| L3.4 | CLI command: `workflow-runner index` to pre-build embeddings | ~40 lines |
+| L3.4 | CLI command: `goflow index` to pre-build embeddings | ~40 lines |
 | L3.5 | Cache index to disk, rebuild on file change (hash-based) | ~80 lines |
 | L3.6 | Tests | ~100 lines |
 
@@ -598,7 +598,7 @@ steps:
 | `langchaingo` API instability | Medium | Pin version in `go.mod`; wrap behind `SessionExecutor` interface |
 | Tool-call loop infinite loops | High | Max iterations cap (e.g., 20 tool calls per step) |
 | Local model quality too low | Medium | Allow per-step model override to cloud for critical steps |
-| Semantic search index stale | Low | Hash-based cache invalidation; `workflow-runner index` CLI command |
+| Semantic search index stale | Low | Hash-based cache invalidation; `goflow index` CLI command |
 | `run_in_terminal` tool security | High | Allowlist commands, sandbox directories, timeout enforcement |
 | Context window overflow with tool results | Medium | Reuse existing `TruncateConfig` for tool output truncation |
 | Provider API key leakage in audit logs | High | Never log API keys; only reference env var names |
@@ -612,9 +612,9 @@ steps:
 
 ## 11. Alternative Agentic SDK Comparison
 
-Beyond LangChain (`langchaingo`), several other agentic SDKs were evaluated for potential use as the workflow-runner's execution backend. The key requirements are:
+Beyond LangChain (`langchaingo`), several other agentic SDKs were evaluated for potential use as the goflow's execution backend. The key requirements are:
 
-1. **Go support** — the workflow-runner is written in Go
+1. **Go support** — the goflow is written in Go
 2. **Local model support** — Ollama, vLLM, llama.cpp for offline/on-prem
 3. **MCP server support** — native Model Context Protocol integration
 4. **SKILL/domain-knowledge injection** — equivalent to VS Code SKILL files
@@ -693,7 +693,7 @@ Beyond LangChain (`langchaingo`), several other agentic SDKs were evaluated for 
 - Requires significant boilerplate for state management
 - No SKILL/knowledge injection concept
 
-**Verdict:** Most architecturally similar to workflow-runner's DAG approach, but Python-only with no MCP support.
+**Verdict:** Most architecturally similar to goflow's DAG approach, but Python-only with no MCP support.
 
 #### OpenAI Agents SDK (Python/JS, 20.4k ⭐)
 
@@ -786,7 +786,7 @@ Beyond LangChain (`langchaingo`), several other agentic SDKs were evaluated for 
 
 Even though we can't directly use them, other SDKs provide design inspiration:
 
-| Feature | Best Implementation | How to Apply in Workflow Runner |
+| Feature | Best Implementation | How to Apply in goflow |
 |---|---|---|
 | **MCP integration** | OpenAI Agents SDK (4 transports, MCPServerManager, tool filtering, approval flows) | Model our `mcp-go` bridge after OpenAI's multi-transport architecture; add tool filtering and approval hooks |
 | **Agent definitions** | CrewAI (`agents.yaml` + `tasks.yaml`) | Keep our `.agent.md` format but ensure LangChain backend can fully parse it |

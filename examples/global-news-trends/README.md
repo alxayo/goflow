@@ -39,7 +39,7 @@ A self-contained workflow that scans 7 international news outlets in parallel, e
 
 ## Folder Structure
 
-This workflow is **self-contained** — all agents, skills, and the workflow YAML live in this folder. The workflow runner resolves all paths relative to the workflow file location.
+This workflow is **self-contained** — all agents, skills, and the workflow YAML live in this folder. goflow resolves all paths relative to the workflow file location.
 
 ```
 examples/global-news-trends/
@@ -77,9 +77,9 @@ examples/global-news-trends/
 
 ```bash
 # From the repo root
-go build -o workflow-runner ./cmd/workflow-runner/main.go
+go build -o goflow ./cmd/workflow-runner/main.go
 
-./workflow-runner run \
+./goflow run \
   --workflow examples/global-news-trends/global-news-trends.yaml \
   --verbose
 ```
@@ -87,7 +87,7 @@ go build -o workflow-runner ./cmd/workflow-runner/main.go
 ### With custom news sites
 
 ```bash
-./workflow-runner run \
+./goflow run \
   --workflow examples/global-news-trends/global-news-trends.yaml \
   --inputs site_bbc=https://www.bbc.com/news \
   --inputs site_nytimes=https://www.nytimes.com \
@@ -101,7 +101,7 @@ go build -o workflow-runner ./cmd/workflow-runner/main.go
 ### Dry run with mock executor
 
 ```bash
-./workflow-runner run \
+./goflow run \
   --workflow examples/global-news-trends/global-news-trends.yaml \
   --mock --verbose
 ```

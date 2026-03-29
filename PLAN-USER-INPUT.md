@@ -6,7 +6,7 @@
 
 ## Current State
 
-The workflow runner operates in **fully autonomous mode**:
+goflow operates in **fully autonomous mode**:
 
 - `copilot_cli.go` passes `--no-ask-user` to every CLI invocation, suppressing the `ask_user` tool entirely.
 - The `Session` interface has a simple `Send(ctx, prompt) (string, error)` — no mechanism for mid-execution interaction.
@@ -46,10 +46,10 @@ steps:
 
 ```bash
 # Autonomous (default, current behavior)
-workflow-runner run --workflow review.yaml
+goflow run --workflow review.yaml
 
 # Interactive — all steps can ask for clarification
-workflow-runner run --workflow review.yaml --interactive
+goflow run --workflow review.yaml --interactive
 ```
 
 ---
@@ -352,7 +352,7 @@ Update `step.meta.json` to include an `interactive` field and count of user inpu
 ## Execution Flow (Interactive Step)
 
 ```
-User runs: workflow-runner run --workflow review.yaml --interactive
+User runs: goflow run --workflow review.yaml --interactive
 
   CLI parses --interactive flag
     ↓
@@ -427,4 +427,4 @@ The existing one-shot CLI execution path (`--no-ask-user`) remains unchanged for
 
 2. **Per-agent interactive setting:** Should the `.agent.md` file also support an `interactive` field? This would allow an agent to declare itself as "always needs clarification" regardless of the step config. **Recommendation: Defer to a follow-up; step-level and workflow-level is sufficient for now.**
 
-3. **Non-terminal environments:** If workflow-runner is invoked from CI or a script, interactive mode should be auto-detected and disabled (check `os.Stdin` is a terminal via `isatty`). **Recommendation: Add `isatty` check and warn if `--interactive` is used without a terminal.**
+3. **Non-terminal environments:** If goflow is invoked from CI or a script, interactive mode should be auto-detected and disabled (check `os.Stdin` is a terminal via `isatty`). **Recommendation: Add `isatty` check and warn if `--interactive` is used without a terminal.**

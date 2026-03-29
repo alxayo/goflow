@@ -1,4 +1,4 @@
-# Workflow Runner — User Guide & Tutorial
+# goflow — User Guide & Tutorial
 
 A step-by-step guide to building and running multi-agent AI workflows, from your first single-step workflow to advanced parallel pipelines with conditional branching, shared memory, and model selection.
 
@@ -57,7 +57,7 @@ A step-by-step guide to building and running multi-agent AI workflows, from your
 
 ## 1. Introduction
 
-Workflow Runner is a command-line tool that orchestrates multi-step AI agent pipelines. Instead of manually running agents one at a time and copy-pasting results between them, you describe the entire pipeline in a YAML file:
+goflow is a command-line tool that orchestrates multi-step AI agent pipelines. Instead of manually running agents one at a time and copy-pasting results between them, you describe the entire pipeline in a YAML file:
 
 - **Which agents** to use (security reviewer, performance auditor, aggregator, …)
 - **What prompts** to send to each agent
@@ -98,13 +98,13 @@ This guide walks you through the system progressively:
 
 ```bash
 cd ~/Code/workflow-runner
-go build -o workflow-runner ./cmd/workflow-runner/main.go
+go build -o goflow ./cmd/workflow-runner/main.go
 ```
 
-This produces a `workflow-runner` binary in the current directory. Verify it works:
+This produces a `goflow` binary in the current directory. Verify it works:
 
 ```bash
-./workflow-runner
+./goflow
 # Expected: usage output
 ```
 
@@ -139,7 +139,7 @@ agents:
 steps:
   - id: greet
     agent: greeter
-    prompt: "Say hello and explain what a workflow runner is in two sentences."
+    prompt: "Say hello and explain what goflow is in two sentences."
 
 output:
   steps: [greet]
@@ -158,13 +158,13 @@ output:
 Run it with the Copilot CLI (real LLM):
 
 ```bash
-./workflow-runner run --workflow my-first-workflow.yaml --verbose
+./goflow run --workflow my-first-workflow.yaml --verbose
 ```
 
 Or run it with mock mode (deterministic, no LLM required):
 
 ```bash
-./workflow-runner run --workflow my-first-workflow.yaml --mock --verbose
+./goflow run --workflow my-first-workflow.yaml --mock --verbose
 ```
 
 The `--verbose` flag prints step progress and timing to stderr. The final output goes to stdout.
@@ -181,7 +181,7 @@ Mock mode is invaluable during workflow development. It:
 Use it to validate your YAML structure, dependency graph, and template wiring before spending tokens on real LLM calls.
 
 ```bash
-./workflow-runner run --workflow my-first-workflow.yaml --mock --verbose
+./goflow run --workflow my-first-workflow.yaml --mock --verbose
 ```
 
 ### 3.4 Inspecting the Audit Trail
@@ -261,13 +261,13 @@ output:
 Run with defaults:
 
 ```bash
-./workflow-runner run --workflow parameterized-workflow.yaml --verbose
+./goflow run --workflow parameterized-workflow.yaml --verbose
 ```
 
 Override inputs from the CLI:
 
 ```bash
-./workflow-runner run --workflow parameterized-workflow.yaml \
+./goflow run --workflow parameterized-workflow.yaml \
   --inputs files='src/**/*.go' \
   --inputs focus_area='security vulnerabilities' \
   --verbose
@@ -442,7 +442,7 @@ agents:
 
 ### 6.3 Agent Discovery — Automatic File-Based Loading
 
-Workflow Runner searches for agent files in multiple standard locations, similar to how VS Code discovers custom agents. You only need to use the `file` key for agents outside these locations.
+goflow searches for agent files in multiple standard locations, similar to how VS Code discovers custom agents. You only need to use the `file` key for agents outside these locations.
 
 **Discovery priority (highest → lowest):**
 
@@ -484,13 +484,13 @@ Agent files found under `.claude/agents/` are automatically normalized:
 
 Unknown tool names (e.g., `WebFetch`, `Agent`, `WebSearch`) are kept as-is and passed through to the CLI without transformation.
 
-> **Note — Tool naming conventions differ across platforms.** Copilot CLI uses lowercase names (`grep`, `view`, `bash`), VS Code uses `category/toolName` identifiers (`search/textSearch`, `read/readFile`), and Claude Code uses PascalCase (`Read`, `Grep`, `Bash`). When writing agent files for workflow-runner, use Copilot CLI names.
+> **Note — Tool naming conventions differ across platforms.** Copilot CLI uses lowercase names (`grep`, `view`, `bash`), VS Code uses `category/toolName` identifiers (`search/textSearch`, `read/readFile`), and Claude Code uses PascalCase (`Read`, `Grep`, `Bash`). When writing agent files for goflow, use Copilot CLI names.
 
 ---
 
 ## 7. Parallel Execution — Fan-Out & Fan-In
 
-This is where Workflow Runner really shines. When multiple steps depend on the same upstream step but not on each other, they are placed in the same DAG level and can run in parallel.
+This is where goflow really shines. When multiple steps depend on the same upstream step but not on each other, they are placed in the same DAG level and can run in parallel.
 
 ### 7.1 How the DAG Works
 
@@ -746,7 +746,7 @@ Only one operator should be specified per condition.
 
 ## 9. Model Selection & Fallback
 
-Workflow Runner supports model selection at three levels, creating a priority-ordered fallback chain.
+goflow supports model selection at three levels, creating a priority-ordered fallback chain.
 
 ### 9.1 Workflow-Level Default Model
 
@@ -1387,10 +1387,10 @@ output:
 
 ```bash
 # Test with mock mode first
-./workflow-runner run --workflow full-pipeline.yaml --mock --verbose
+./goflow run --workflow full-pipeline.yaml --mock --verbose
 
 # Then run for real
-./workflow-runner run --workflow full-pipeline.yaml \
+./goflow run --workflow full-pipeline.yaml \
   --inputs files='pkg/**/*.go' \
   --inputs severity_filter='HIGH' \
   --verbose
@@ -1401,7 +1401,7 @@ output:
 ## 17. CLI Reference
 
 ```
-workflow-runner run [options]
+goflow run [options]
 ```
 
 | Flag | Required | Description |
@@ -1423,19 +1423,19 @@ workflow-runner run [options]
 
 ```bash
 # Basic run
-./workflow-runner run --workflow pipeline.yaml
+./goflow run --workflow pipeline.yaml
 
 # With inputs and verbose output
-./workflow-runner run --workflow pipeline.yaml \
+./goflow run --workflow pipeline.yaml \
   --inputs files='src/**/*.go' \
   --inputs severity_filter='HIGH' \
   --verbose
 
 # Mock mode for testing
-./workflow-runner run --workflow pipeline.yaml --mock --verbose
+./goflow run --workflow pipeline.yaml --mock --verbose
 
 # Custom audit directory
-./workflow-runner run --workflow pipeline.yaml --audit-dir ./my-audit-logs
+./goflow run --workflow pipeline.yaml --audit-dir ./my-audit-logs
 
 # Run example workflow from repository root (agent paths resolve relative to workflow file)
 go run ./cmd/workflow-runner run \

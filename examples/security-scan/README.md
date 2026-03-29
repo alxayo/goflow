@@ -34,14 +34,14 @@ discover → ┌─ scan-python (Bandit)
 
 ```bash
 # Scan current directory
-workflow-runner run --workflow examples/security-scan/security-scan.yaml
+goflow run --workflow examples/security-scan/security-scan.yaml
 
 # Scan a specific directory
-workflow-runner run --workflow examples/security-scan/security-scan.yaml \
+goflow run --workflow examples/security-scan/security-scan.yaml \
   --inputs target=./src
 
 # Only report HIGH and CRITICAL findings
-workflow-runner run --workflow examples/security-scan/security-scan.yaml \
+goflow run --workflow examples/security-scan/security-scan.yaml \
   --inputs target=./src \
   --inputs severity=HIGH
 ```

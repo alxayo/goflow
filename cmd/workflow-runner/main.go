@@ -1,4 +1,4 @@
-// main.go is the CLI entry point for the workflow runner. It provides the
+// main.go is the CLI entry point for goflow. It provides the
 // "run" command that loads a workflow YAML, discovers agents, and executes
 // the workflow DAG.
 package main
@@ -37,7 +37,7 @@ func (f *inputsFlag) Set(val string) error {
 	return nil
 }
 
-const usage = `Usage: workflow-runner run [options]
+const usage = `Usage: goflow run [options]
 
 Options:
   --workflow      Path to workflow YAML file (required)

@@ -1,5 +1,5 @@
 // integration_test.go provides end-to-end tests that exercise the full
-// workflow-runner pipeline: YAML parsing → validation → agent resolution →
+// goflow pipeline: YAML parsing -> validation -> agent resolution ->
 // DAG building → step execution → audit logging → output reporting.
 // All tests are self-contained using temp dirs and inline agents.
 package main

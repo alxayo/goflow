@@ -1,6 +1,6 @@
 # Agent, Skill & MCP Server Discovery and Per-Step Scoping
 
-This document provides a comprehensive analysis of how agents, skills, and MCP servers are discovered and configured in the Copilot SDK and CLI, how the workflow runner currently handles these, and what would be required to implement **per-step scoping** — where each workflow step can have its own dedicated folder for agents, skills, and MCP servers.
+This document provides a comprehensive analysis of how agents, skills, and MCP servers are discovered and configured in the Copilot SDK and CLI, how goflow currently handles these, and what would be required to implement **per-step scoping** — where each workflow step can have its own dedicated folder for agents, skills, and MCP servers.
 
 > **IMPORTANT UPDATE**: Cross-referencing the Copilot SDK documentation with the Copilot CLI changelog reveals that the **CLI performs its own filesystem-based discovery**, and the SDK can either pass explicit configurations OR leverage the CLI's auto-discovery. This is a critical architectural detail.
 
@@ -13,7 +13,7 @@ This document provides a comprehensive analysis of how agents, skills, and MCP s
    - [CLI Default Resources (Always Available)](#cli-default-resources-always-available)
    - [Tool Restriction via Agent Definition](#tool-restriction-via-agent-definition)
    - [Copilot SDK: Configuration Passing vs CLI Discovery](#copilot-sdk-configuration-passing-vs-cli-discovery)
-   - [Workflow Runner: Current Implementation](#workflow-runner-current-implementation)
+    - [goflow: Current Implementation](#goflow-current-implementation)
 2. [Per-Step Scoping: Design & Implementation](#2-per-step-scoping-design--implementation)
    - [Concept Overview](#concept-overview)
    - [YAML Schema Changes](#yaml-schema-changes)
@@ -22,7 +22,7 @@ This document provides a comprehensive analysis of how agents, skills, and MCP s
    - [Per-Step Parallel Execution Model](#per-step-parallel-execution-model)
 3. [Model Usage and Enforcement](#3-model-usage-and-enforcement)
    - [Copilot SDK Model Selection](#copilot-sdk-model-selection)
-   - [Current Workflow Runner Model Handling](#current-workflow-runner-model-handling)
+    - [Current goflow Model Handling](#current-goflow-model-handling)
    - [Per-Agent Model Enforcement](#per-agent-model-enforcement)
 4. [Implementation Summary](#4-implementation-summary)
 5. [Appendix: SDK Code Examples](#appendix-sdk-code-examples)
@@ -185,7 +185,7 @@ From **v0.0.407** (Feb 11, 2026):
 
 This confirms the CLI respects the `tools` field and implements tool restrictions per agent.
 
-##### Implications for Workflow Runner
+##### Implications for goflow
 
 | Method | Restricts Tools? | Notes |
 |--------|------------------|-------|
@@ -194,7 +194,7 @@ This confirms the CLI respects the `tools` field and implements tool restriction
 | CLI flags (`--deny-tool`) | ✅ **YES** | Session-wide restriction |
 | SDK session config | ❌ **NO** | Cannot remove CLI built-in tools |
 
-**Key takeaway:** For per-step tool isolation in the workflow runner, use the `tools` field in agent definitions rather than trying to remove tools at the session level.
+**Key takeaway:** For per-step tool isolation in goflow, use the `tools` field in agent definitions rather than trying to remove tools at the session level.
 
 ### Copilot SDK: Configuration Passing vs CLI Discovery
 
@@ -375,11 +375,11 @@ CustomAgents: []copilot.CustomAgent{
 
 ---
 
-### Workflow Runner: Current Implementation
+### goflow: Current Implementation
 
-The workflow runner implements its own discovery layer on top of the SDK abstractions. **However**, this duplicates what the CLI already does natively.
+goflow implements its own discovery layer on top of the SDK abstractions. **However**, this duplicates what the CLI already does natively.
 
-#### Agent Discovery (Workflow Runner's Own Implementation)
+#### Agent Discovery (goflow's Own Implementation)
 
 Agents are discovered from multiple filesystem locations with priority ordering:
 
@@ -391,7 +391,7 @@ Agents are discovered from multiple filesystem locations with priority ordering:
 | 4 | `~/.copilot/agents/*.agent.md` | User-global agents |
 | 5 (lowest) | `config.agent_search_paths` entries | Custom directories |
 
-**Note**: This discovery logic **duplicates** what the Copilot CLI already does. The workflow runner could potentially delegate discovery to the CLI when using the SDK.
+**Note**: This discovery logic **duplicates** what the Copilot CLI already does. goflow could potentially delegate discovery to the CLI when using the SDK.
 
 **Current code:** [pkg/agents/discovery.go](pkg/agents/discovery.go)
 
@@ -422,7 +422,7 @@ func DiscoverAgents(workspaceDir string, extraPaths []string) (map[string]*Agent
 
 #### Architecture Decision: Own Discovery vs CLI Discovery
 
-The workflow runner has two choices for implementation:
+goflow has two choices for implementation:
 
 **Option A: Continue Own Discovery (Current)**
 - Pros: Full control, works with CLI prompt mode (`-p`)
@@ -498,7 +498,7 @@ After cross-referencing both repositories, here's the definitive architecture:
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                    YOUR APPLICATION                              │
-│                  (Workflow Runner)                               │
+│                  (goflow)                                        │
 └───────────────────────┬─────────────────────────────────────────┘
                         │
                         │ Go SDK / Python SDK / etc.
@@ -946,9 +946,9 @@ session, err := client.CreateSession(ctx, &copilot.SessionConfig{
 })
 ```
 
-### Current Workflow Runner Model Handling
+### Current goflow Model Handling
 
-The workflow runner resolves models in this order:
+goflow resolves models in this order:
 
 1. **Agent-level model** (from `.agent.md` frontmatter)
 2. **Workflow-level model** (from `config.model`)
@@ -981,7 +981,7 @@ if s.cfg.Model != "" {
 
 ### Per-Agent Model Enforcement
 
-Since the workflow runner creates **one session per step**, per-agent model selection already works:
+Since goflow creates **one session per step**, per-agent model selection already works:
 
 ```
 Step 1: security-scan
@@ -1058,7 +1058,7 @@ if step.Model != "" {
 | **Built-in Tools** | Cannot disable via SDK config | Always available (grep, view, edit, bash, etc.) | Always available |
 | **GitHub MCP Server** | Cannot disable via SDK config | Enabled by default | Can disable via `--disable-mcp-server=github` flag |
 
-### Key Implications for Workflow Runner
+### Key Implications for goflow
 
 1. **The CLI is the runtime engine**: The SDK is a wrapper around the CLI. All agent execution happens inside the CLI process.
 
@@ -1069,16 +1069,16 @@ if step.Model != "" {
    - **Use flags**: `--disable-mcp-server`, `--deny-tool`, `--available-tools`
    - **Extend only**: Add scoped resources via SDK, accept CLI baseline
 
-4. **Workflow runner's own discovery is redundant**: The workflow runner reimplements agent discovery that the CLI already does. Consider delegating to CLI or using SDK's discovery APIs.
+4. **goflow's own discovery is redundant**: goflow reimplements agent discovery that the CLI already does. Consider delegating to CLI or using SDK's discovery APIs.
 
 ### What Currently Works
 
 | Feature | Status | Details |
 |---|---|---|
-| Agent discovery from filesystem | ✅ Implemented | Workflow runner has own discovery (duplicates CLI) |
+| Agent discovery from filesystem | ✅ Implemented | goflow has its own discovery (duplicates CLI) |
 | Agent file parsing (`.agent.md`) | ✅ Implemented | YAML frontmatter + markdown body |
 | Per-agent model from frontmatter | ✅ Implemented | Passed to CLI via `--model` flag |
-| CLI-native agent discovery | ⚠️ Not leveraged | CLI discovers agents but workflow runner re-discovers |
+| CLI-native agent discovery | ⚠️ Not leveraged | CLI discovers agents but goflow re-discovers |
 | CLI-native skill discovery | ⚠️ Not leveraged | CLI discovers skills automatically |
 | CLI-native MCP discovery | ⚠️ Not leveraged | CLI discovers MCP from `.mcp.json` etc. |
 | Skills field in YAML | ⚠️ Parsed only | Not passed to SDK/CLI |
@@ -1283,5 +1283,5 @@ These are the filesystem paths the Copilot CLI scans automatically (from changel
 - [MCP Servers Guide](https://github.com/github/copilot-sdk/blob/main/docs/features/mcp.md)
 - [Copilot CLI Changelog](https://github.com/github/copilot-cli/blob/main/changelog.md) — **Critical source for discovery paths**
 - [About Copilot CLI](https://docs.github.com/copilot/concepts/agents/about-copilot-cli)
-- [Workflow Runner PLAN.md](./PLAN.md)
-- [Workflow Runner DOCS.md](./DOCS.md)
+- [goflow PLAN.md](./PLAN.md)
+- [goflow DOCS.md](./DOCS.md)

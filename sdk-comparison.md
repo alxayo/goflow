@@ -1,6 +1,6 @@
 # Copilot SDK vs LangChain vs Microsoft Agentic SDK: Primitives Comparison
 
-A comparison of key agentic primitives across the three frameworks relevant to workflow-runner's execution backend.
+A comparison of key agentic primitives across the three frameworks relevant to goflow's execution backend.
 
 ---
 
@@ -15,7 +15,7 @@ A comparison of key agentic primitives across the three frameworks relevant to w
 | **Inline definitions** | Via workflow YAML `agents.*.inline` | Code-only | Code-only |
 | **Handoffs metadata** | Parsed from frontmatter (`handoffs[].agent`, `.prompt`, `.send`) | No concept | AutoGen has agent routing; Semantic Kernel has no explicit handoffs |
 
-**Gap summary:** `.agent.md` is a Copilot/VS Code-specific format. Neither LangChain nor Microsoft frameworks have anything equivalent — agent config is always in code. The workflow-runner bridges this via `pkg/agents/loader.go` which parses `.agent.md` and maps fields to `SessionConfig`, making the format backend-agnostic.
+**Gap summary:** `.agent.md` is a Copilot/VS Code-specific format. Neither LangChain nor Microsoft frameworks have anything equivalent — agent config is always in code. The goflow bridges this via `pkg/agents/loader.go` which parses `.agent.md` and maps fields to `SessionConfig`, making the format backend-agnostic.
 
 ---
 
@@ -85,6 +85,6 @@ A comparison of key agentic primitives across the three frameworks relevant to w
 
 ## Key Takeaway
 
-The workflow-runner's current architecture — Copilot SDK as default backend, with a `SessionExecutor` interface that enables swappable backends — is well-positioned. The Copilot SDK excels at the VS Code ecosystem primitives (agent files, SKILLs, MCP, built-in tools) but lacks multi-provider and offline support. LangChain fills that gap but requires ~430 lines of bridge code for MCP, tools, and SKILL injection. Microsoft's frameworks (AutoGen/Semantic Kernel) have the richest feature set but have no Go SDK, making them impractical as a direct backend.
+The goflow's current architecture — Copilot SDK as default backend, with a `SessionExecutor` interface that enables swappable backends — is well-positioned. The Copilot SDK excels at the VS Code ecosystem primitives (agent files, SKILLs, MCP, built-in tools) but lacks multi-provider and offline support. LangChain fills that gap but requires ~430 lines of bridge code for MCP, tools, and SKILL injection. Microsoft's frameworks (AutoGen/Semantic Kernel) have the richest feature set but have no Go SDK, making them impractical as a direct backend.
 
 For detailed implementation plans and bridge code estimates, see [research-langchain-support.md](research-langchain-support.md) (sections 2, 5, 6, and 11).

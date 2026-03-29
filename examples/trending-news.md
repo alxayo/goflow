@@ -57,15 +57,15 @@ Steps 1–5 run in **parallel** (no `depends_on` between them). Step 6 **fans in
 ### With default news sites (BBC, CNN, Reuters, Google News, AP)
 
 ```bash
-go build -o workflow-runner ./cmd/workflow-runner/main.go
+go build -o goflow ./cmd/workflow-runner/main.go
 
-./workflow-runner run --workflow examples/trending-news.yaml --verbose
+./goflow run --workflow examples/trending-news.yaml --verbose
 ```
 
 ### With custom news sites
 
 ```bash
-./workflow-runner run --workflow examples/trending-news.yaml \
+./goflow run --workflow examples/trending-news.yaml \
   --inputs site_1=https://www.bbc.com/news \
   --inputs site_2=https://www.nytimes.com \
   --inputs site_3=https://www.theguardian.com \
@@ -76,7 +76,7 @@ go build -o workflow-runner ./cmd/workflow-runner/main.go
 ### Dry run with mock executor (no API calls)
 
 ```bash
-./workflow-runner run --workflow examples/trending-news.yaml --mock --verbose
+./goflow run --workflow examples/trending-news.yaml --mock --verbose
 ```
 
 ## Output

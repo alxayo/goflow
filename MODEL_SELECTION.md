@@ -1,10 +1,10 @@
-# Model Selection in Workflow Runner
+# Model Selection in goflow
 
-This document explains how model selection works in the workflow runner, including the priority order, fallback behavior, and integration with the Copilot CLI.
+This document explains how model selection works in goflow, including the priority order, fallback behavior, and integration with the Copilot CLI.
 
 ## Overview
 
-The workflow runner supports model selection at three levels:
+goflow supports model selection at three levels:
 1. **Step-level** - Highest priority, specified in the workflow YAML
 2. **Agent-level** - Specified in the `.agent.md` file frontmatter
 3. **Workflow-level** - Default model in the workflow's `config.model`
@@ -150,7 +150,7 @@ When the Copilot CLI receives a `--model` flag with an unavailable model, it ret
 Error: Model "model-name" from --model flag is not available.
 ```
 
-The workflow runner handles this by:
+goflow handles this by:
 1. Detecting the "not available" error
 2. Trying the next model in the priority list
 3. Eventually falling back to CLI default (no `--model` flag)
@@ -202,7 +202,7 @@ export COPILOT_PROVIDER_API_KEY=sk-...
 export COPILOT_MODEL=my-custom-model
 ```
 
-**Note:** The `COPILOT_MODEL` environment variable serves as a global default but is overridden by the `--model` CLI flag, which the workflow runner uses for specified models.
+**Note:** The `COPILOT_MODEL` environment variable serves as a global default but is overridden by the `--model` CLI flag, which goflow uses for specified models.
 
 ## Audit Logging
 

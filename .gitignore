@@ -1,5 +1,6 @@
 # Binaries
 /workflow-runner
+/goflow
 *.exe
 
 # IDE

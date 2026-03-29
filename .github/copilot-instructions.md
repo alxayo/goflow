@@ -1,4 +1,4 @@
-# Workflow Runner — Copilot Instructions
+# goflow — Copilot Instructions
 
 **Project:** An AI workflow orchestration engine that coordinates multi-agent LLM workflows with parallelism, powered by the Copilot SDK.
 
@@ -34,7 +34,7 @@ go mod init github.com/alex-workflow-runner
 go get github.com/github/copilot-sdk/go
 
 # Build the CLI binary
-go build -o workflow-runner ./cmd/workflow-runner/main.go
+go build -o goflow ./cmd/workflow-runner/main.go
 
 # Run all tests
 go test ./...
@@ -260,15 +260,15 @@ Each workflow run creates a timestamped directory:
 **CLI Commands (Planned):**
 ```bash
 # Run a workflow
-workflow-runner run --workflow code-review.yaml \
+goflow run --workflow code-review.yaml \
   --inputs files=src/main.go \
   --inputs branch=feature/x
 
 # Monitor live
-workflow-runner watch --run .workflow-runs/2026-03-20T14-32-05_code-review-pipeline
+goflow watch --run .workflow-runs/2026-03-20T14-32-05_code-review-pipeline
 
 # Resume from checkpoint
-workflow-runner resume --run .workflow-runs/2026-03-20T14-32-05_code-review-pipeline \
+goflow resume --run .workflow-runs/2026-03-20T14-32-05_code-review-pipeline \
   --step review-security
 ```
 
@@ -526,7 +526,7 @@ This file is a **quick reference for developers**. For comprehensive technical d
 ## Next Steps: Create Initial Scaffold
 
 When ready to start Phase 1 implementation, suggest:
-1. **`/create-structure go workflow-runner`** — Generate initial Go module, project structure
+1. **`/create-structure go goflow`** — Generate initial Go module, project structure
 2. **`/create-agent security-reviewer`** — Create a working `.agent.md` agent file
 3. **`/create-prompt code-review-workflow`** — Example workflow YAML prompt
 4. **`/create-test dag-builder`** — Scaffold initial test for DAG builder
