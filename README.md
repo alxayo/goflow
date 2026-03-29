@@ -51,7 +51,8 @@ go run ./cmd/workflow-runner run \
 ### 3. Real run vs mock run
 
 - Real run (default): uses Copilot CLI to generate actual review content.
-- Mock run: add --mock for deterministic test output.
+- Mock run: add `--mock` for deterministic test output.
+- Interactive run: add `--interactive` to let agents ask clarification questions in the terminal.
 
 Mock example:
 
