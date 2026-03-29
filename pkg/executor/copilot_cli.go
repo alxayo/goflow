@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"sync/atomic"
@@ -78,13 +79,27 @@ func (s *CopilotCLISession) Send(ctx context.Context, prompt string) (string, er
 
 // tryWithModel attempts to run the prompt with a specific model.
 // If model is empty, runs without --model flag (CLI picks default).
+//
+// When the session is configured as interactive (cfg.Interactive == true),
+// the --no-ask-user flag is omitted, allowing the Copilot CLI's built-in
+// ask_user tool to function. In this mode, the CLI may pause and prompt
+// the user for input via the terminal's stdin/stdout.
+//
+// When the session is NOT interactive (the default), --no-ask-user is
+// passed to suppress any user interaction, making the step fully autonomous.
 func (s *CopilotCLISession) tryWithModel(ctx context.Context, prompt, model string) (string, error) {
 	args := []string{
-		"--no-ask-user",
 		"--no-color",
 		"-s",
 		"-p",
 		prompt,
+	}
+
+	// Only suppress user interaction when the step is NOT interactive.
+	// When interactive, the CLI's ask_user tool is available, allowing
+	// the LLM to pause and ask the user for clarification.
+	if !s.cfg.Interactive {
+		args = append(args, "--no-ask-user")
 	}
 
 	// If the agent specifies an explicit tools list, restrict to those tools.
@@ -96,7 +111,7 @@ func (s *CopilotCLISession) tryWithModel(ctx context.Context, prompt, model stri
 	}
 
 	if model != "" {
-		args = append(args, "--model", model)
+		args = append(args, "--model", strings.ToLower(model))
 	}
 
 	// Add extra directories for per-step resource discovery.
@@ -154,6 +169,15 @@ func (s *CopilotCLISession) runCopilot(ctx context.Context, args []string) (stri
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+
+	// When running in interactive mode, connect the process's stdin to the
+	// terminal so the user can respond to ask_user prompts from the CLI.
+	// In non-interactive mode (the default), stdin is not connected, which
+	// prevents the CLI from blocking on user input.
+	if s.cfg.Interactive {
+		cmd.Stdin = os.Stdin
+	}
+
 	err := cmd.Run()
 	return stdout.String(), stderr.String(), err
 }
