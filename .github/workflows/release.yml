@@ -290,10 +290,10 @@ jobs:
             "autoupdate": {
               "architecture": {
                 "64bit": {
-                  "url": "${SERVER_URL}/${REPOSITORY}/releases/download/v$version/goflow_$version_windows_amd64.zip"
+                  "url": "${SERVER_URL}/${REPOSITORY}/releases/download/v\$version/goflow_\$version_windows_amd64.zip"
                 },
                 "arm64": {
-                  "url": "${SERVER_URL}/${REPOSITORY}/releases/download/v$version/goflow_$version_windows_arm64.zip"
+                  "url": "${SERVER_URL}/${REPOSITORY}/releases/download/v\$version/goflow_\$version_windows_arm64.zip"
                 }
               }
             }
