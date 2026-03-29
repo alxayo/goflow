@@ -252,6 +252,91 @@ steps:
 				}
 			},
 		},
+		{
+			name: "config interactive parsed",
+			yaml: `
+name: interactive-wf
+config:
+  interactive: true
+steps:
+  - id: s1
+    agent: a
+    prompt: "ask me things"
+`,
+			check: func(t *testing.T, wf *Workflow) {
+				if !wf.Config.Interactive {
+					t.Error("config.interactive should be true")
+				}
+			},
+		},
+		{
+			name: "config interactive defaults to false",
+			yaml: `
+name: non-interactive-wf
+steps:
+  - id: s1
+    agent: a
+    prompt: "autonomous work"
+`,
+			check: func(t *testing.T, wf *Workflow) {
+				if wf.Config.Interactive {
+					t.Error("config.interactive should default to false")
+				}
+			},
+		},
+		{
+			name: "step interactive field parsed as true",
+			yaml: `
+name: step-interactive
+steps:
+  - id: s1
+    agent: a
+    prompt: "ask me"
+    interactive: true
+`,
+			check: func(t *testing.T, wf *Workflow) {
+				if wf.Steps[0].Interactive == nil {
+					t.Fatal("step.interactive should not be nil")
+				}
+				if !*wf.Steps[0].Interactive {
+					t.Error("step.interactive should be true")
+				}
+			},
+		},
+		{
+			name: "step interactive field parsed as false",
+			yaml: `
+name: step-no-interactive
+steps:
+  - id: s1
+    agent: a
+    prompt: "no questions"
+    interactive: false
+`,
+			check: func(t *testing.T, wf *Workflow) {
+				if wf.Steps[0].Interactive == nil {
+					t.Fatal("step.interactive should not be nil when explicitly false")
+				}
+				if *wf.Steps[0].Interactive {
+					t.Error("step.interactive should be false")
+				}
+			},
+		},
+		{
+			name: "step interactive unset defaults to nil",
+			yaml: `
+name: step-unset
+steps:
+  - id: s1
+    agent: a
+    prompt: "inherit"
+`,
+			check: func(t *testing.T, wf *Workflow) {
+				if wf.Steps[0].Interactive != nil {
+					t.Errorf("step.interactive should be nil when unset, got %v", *wf.Steps[0].Interactive)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {

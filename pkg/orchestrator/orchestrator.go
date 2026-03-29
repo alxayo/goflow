@@ -7,6 +7,7 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 
 	"github.com/alex-workflow-runner/workflow-runner/pkg/agents"
@@ -21,10 +22,23 @@ type Orchestrator struct {
 	Agents         map[string]*agents.Agent
 	Inputs         map[string]string
 	MaxConcurrency int // 0 = unlimited
+
+	// CLIInteractive is the global interactive flag from the --interactive
+	// CLI flag. Combined with the workflow's config.interactive and each
+	// step's interactive field to resolve the effective interactive state.
+	CLIInteractive bool
+
+	// OnUserInput is the callback for handling user-input requests from
+	// the LLM. Passed through to the executor for interactive steps.
+	OnUserInput executor.UserInputHandler
 }
 
 // Run executes the workflow, processing DAG levels in order.
 // Returns a map of step ID → StepResult for all executed steps.
+//
+// For each step, the interactive flag is resolved using the three-level
+// priority: step.Interactive > wf.Config.Interactive > CLIInteractive.
+// The resolved flag is set on the executor before running each step.
 func (o *Orchestrator) Run(ctx context.Context, wf *workflow.Workflow) (map[string]*workflow.StepResult, error) {
 	levels, err := workflow.BuildDAG(wf.Steps)
 	if err != nil {
@@ -41,15 +55,27 @@ func (o *Orchestrator) Run(ctx context.Context, wf *workflow.Workflow) (map[stri
 				return results, fmt.Errorf("step %q: agent %q not found", step.ID, step.Agent)
 			}
 
+			// Resolve the interactive flag for this specific step.
+			// This uses the three-level resolution: step > config > CLI.
+			o.Executor.Interactive = workflow.IsInteractive(step, wf.Config.Interactive, o.CLIInteractive)
+			o.Executor.OnUserInput = o.OnUserInput
+
 			result, err := o.Executor.Execute(ctx, step, agent, outputMap, o.Inputs, level.Depth)
 			if err != nil {
-				results[step.ID] = result
+				if result != nil {
+					results[step.ID] = result
+				}
 				return results, fmt.Errorf("step %q failed: %w", step.ID, err)
 			}
 
 			results[step.ID] = result
 			if result.Status == workflow.StepStatusCompleted {
 				outputMap[step.ID] = result.Output
+			} else if result.Status == workflow.StepStatusSkipped {
+				// Skipped steps get an empty output so downstream
+				// {{steps.X.output}} references resolve to "" rather
+				// than failing with "unknown step".
+				outputMap[step.ID] = ""
 			}
 		}
 	}
@@ -60,6 +86,10 @@ func (o *Orchestrator) Run(ctx context.Context, wf *workflow.Workflow) (map[stri
 // RunParallel executes the workflow DAG with concurrent step execution
 // within each level. Uses goroutines + sync.WaitGroup for fan-out.
 // MaxConcurrency limits how many steps run simultaneously (0 = unlimited).
+//
+// Interactive steps within a parallel level are executed sequentially AFTER
+// all non-interactive steps in that level complete. This prevents confusing
+// interleaved user prompts from multiple agents asking questions at once.
 func (o *Orchestrator) RunParallel(ctx context.Context, wf *workflow.Workflow) (map[string]*workflow.StepResult, error) {
 	levels, err := workflow.BuildDAG(wf.Steps)
 	if err != nil {
@@ -70,42 +100,94 @@ func (o *Orchestrator) RunParallel(ctx context.Context, wf *workflow.Workflow) (
 	sem := NewSemaphore(o.MaxConcurrency)
 
 	for _, level := range levels {
-		var wg sync.WaitGroup
-		errCh := make(chan error, len(level.Steps))
-
+		// Separate interactive and non-interactive steps. Interactive steps
+		// are run sequentially after the parallel batch to avoid interleaved
+		// user prompts on the terminal.
+		var parallelSteps []workflow.Step
+		var interactiveSteps []workflow.Step
 		for _, step := range level.Steps {
-			wg.Add(1)
-			go func(s workflow.Step) {
-				defer wg.Done()
-				sem.Acquire()
-				defer sem.Release()
-
-				agent, ok := o.Agents[s.Agent]
-				if !ok {
-					errCh <- fmt.Errorf("step %q: agent %q not found", s.ID, s.Agent)
-					return
-				}
-
-				result, err := o.Executor.Execute(
-					ctx, s, agent, store.OutputMap(), o.Inputs, level.Depth,
-				)
-				if err != nil {
-					if result != nil {
-						store.Store(s.ID, result)
-					}
-					errCh <- fmt.Errorf("step %q: %w", s.ID, err)
-					return
-				}
-				store.Store(s.ID, result)
-			}(step)
+			if workflow.IsInteractive(step, wf.Config.Interactive, o.CLIInteractive) {
+				interactiveSteps = append(interactiveSteps, step)
+			} else {
+				parallelSteps = append(parallelSteps, step)
+			}
 		}
 
-		wg.Wait()
-		close(errCh)
+		// Warn if interactive steps are in a parallel level with other steps.
+		if len(interactiveSteps) > 0 && len(parallelSteps) > 0 {
+			fmt.Fprintf(os.Stderr, "warning: level %d has %d interactive step(s) that will run sequentially after %d parallel step(s)\n",
+				level.Depth, len(interactiveSteps), len(parallelSteps))
+		}
 
-		// Fail fast: return on first error from this level.
-		for err := range errCh {
-			return store.All(), err
+		// Phase 1: Run non-interactive steps in parallel.
+		if len(parallelSteps) > 0 {
+			var wg sync.WaitGroup
+			errCh := make(chan error, len(parallelSteps))
+
+			for _, step := range parallelSteps {
+				wg.Add(1)
+				go func(s workflow.Step) {
+					defer wg.Done()
+					sem.Acquire()
+					defer sem.Release()
+
+					agent, ok := o.Agents[s.Agent]
+					if !ok {
+						errCh <- fmt.Errorf("step %q: agent %q not found", s.ID, s.Agent)
+						return
+					}
+
+					// Create a per-goroutine executor copy to avoid data races
+					// on the Interactive field, since non-interactive steps run
+					// concurrently.
+					stepExec := *o.Executor
+					stepExec.Interactive = false
+					stepExec.OnUserInput = nil
+
+					result, err := stepExec.Execute(
+						ctx, s, agent, store.OutputMap(), o.Inputs, level.Depth,
+					)
+					if err != nil {
+						if result != nil {
+							store.Store(s.ID, result)
+						}
+						errCh <- fmt.Errorf("step %q: %w", s.ID, err)
+						return
+					}
+					store.Store(s.ID, result)
+				}(step)
+			}
+
+			wg.Wait()
+			close(errCh)
+
+			// Fail fast: return on first error from this level.
+			for err := range errCh {
+				return store.All(), err
+			}
+		}
+
+		// Phase 2: Run interactive steps sequentially so user prompts
+		// don't interleave on the terminal.
+		for _, step := range interactiveSteps {
+			agent, ok := o.Agents[step.Agent]
+			if !ok {
+				return store.All(), fmt.Errorf("step %q: agent %q not found", step.ID, step.Agent)
+			}
+
+			o.Executor.Interactive = true
+			o.Executor.OnUserInput = o.OnUserInput
+
+			result, err := o.Executor.Execute(
+				ctx, step, agent, store.OutputMap(), o.Inputs, level.Depth,
+			)
+			if err != nil {
+				if result != nil {
+					store.Store(step.ID, result)
+				}
+				return store.All(), fmt.Errorf("step %q: %w", step.ID, err)
+			}
+			store.Store(step.ID, result)
 		}
 	}
 

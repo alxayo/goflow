@@ -45,6 +45,11 @@ func (rs *ResultsStore) OutputMap() map[string]string {
 	for id, r := range rs.results {
 		if r.Status == workflow.StepStatusCompleted {
 			out[id] = r.Output
+		} else if r.Status == workflow.StepStatusSkipped {
+			// Skipped steps get an empty output so downstream
+			// {{steps.X.output}} references resolve to "" rather
+			// than failing with "unknown step".
+			out[id] = ""
 		}
 	}
 	return out

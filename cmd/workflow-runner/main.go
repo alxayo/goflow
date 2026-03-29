@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
@@ -39,11 +40,12 @@ func (f *inputsFlag) Set(val string) error {
 const usage = `Usage: workflow-runner run [options]
 
 Options:
-  --workflow    Path to workflow YAML file (required)
-  --inputs      Key=value input pairs (repeatable)
-  --audit-dir   Override audit directory (default from workflow config)
-	--mock        Use mock executor instead of Copilot CLI
-  --verbose     Enable verbose logging
+  --workflow      Path to workflow YAML file (required)
+  --inputs        Key=value input pairs (repeatable)
+  --audit-dir     Override audit directory (default from workflow config)
+  --mock          Use mock executor instead of Copilot CLI
+  --interactive   Allow agents to ask for user input during execution
+  --verbose       Enable verbose logging
 `
 
 func main() {
@@ -64,6 +66,7 @@ func run() int {
 	workflowPath := fs.String("workflow", "", "Path to workflow YAML file (required)")
 	auditDirFlag := fs.String("audit-dir", "", "Override audit directory")
 	useMock := fs.Bool("mock", false, "Use mock executor instead of Copilot CLI")
+	interactive := fs.Bool("interactive", false, "Allow agents to ask for user input during execution")
 	verbose := fs.Bool("verbose", false, "Enable verbose logging")
 	inputs := &inputsFlag{values: make(map[string]string)}
 	fs.Var(inputs, "inputs", "Key=value input pair (repeatable)")
@@ -177,16 +180,32 @@ func run() int {
 
 	// 9. Build StepExecutor.
 	stepExec := &executor.StepExecutor{
-		SDK:         sessionExecutor,
-		AuditLogger: auditLogger,
-		Truncate:    wf.Output.Truncate,
+		SDK:          sessionExecutor,
+		AuditLogger:  auditLogger,
+		Truncate:     wf.Output.Truncate,
+		DefaultModel: wf.Config.Model,
 	}
 
-	// 10. Build and run Orchestrator.
+	// 10. Build user-input handler for interactive mode.
+	// The handler is only set when interactive mode is enabled (via CLI
+	// flag or workflow config). It reads user answers from the terminal.
+	var userInputHandler executor.UserInputHandler
+	isInteractive := *interactive || wf.Config.Interactive
+	if isInteractive {
+		userInputHandler = terminalInputHandler
+		if *verbose {
+			fmt.Fprintln(os.Stderr, "Interactive mode enabled — agents may ask for clarification")
+		}
+	}
+
+	// 11. Build and run Orchestrator.
 	orch := &orchestrator.Orchestrator{
-		Executor: stepExec,
-		Agents:   resolvedAgents,
-		Inputs:   mergedInputs,
+		Executor:       stepExec,
+		Agents:         resolvedAgents,
+		Inputs:         mergedInputs,
+		MaxConcurrency: wf.Config.MaxConcurrency,
+		CLIInteractive: *interactive,
+		OnUserInput:    userInputHandler,
 	}
 
 	if *verbose {
@@ -198,24 +217,24 @@ func run() int {
 	results, runErr := orch.Run(ctx, wf)
 	elapsed := time.Since(startTime)
 
-	// 11. Print step statuses in verbose mode.
+	// 12. Print step statuses in verbose mode.
 	if *verbose {
 		for _, step := range wf.Steps {
-			if r, ok := results[step.ID]; ok {
+			if r, ok := results[step.ID]; ok && r != nil {
 				fmt.Fprintf(os.Stderr, "Step %s: %s\n", step.ID, r.Status)
 			}
 		}
 		fmt.Fprintf(os.Stderr, "Workflow completed in %.1fs\n", elapsed.Seconds())
 	}
 
-	// 12. Determine final status.
+	// 13. Determine final status.
 	failed := runErr != nil
 	finalStatus := "completed"
 	if failed {
 		finalStatus = "failed"
 	}
 
-	// 13. Collect outputs for reporter and audit finalization.
+	// 14. Collect outputs for reporter and audit finalization.
 	outputMap := make(map[string]string, len(results))
 	for id, r := range results {
 		if r.Status == workflow.StepStatusCompleted {
@@ -223,14 +242,14 @@ func run() int {
 		}
 	}
 
-	// 14. Format output via reporter.
+	// 15. Format output via reporter.
 	output, err := reporter.FormatOutput(results, wf.Output)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: formatting output: %v\n", err)
 		return 1
 	}
 
-	// 15. Finalize audit trail.
+	// 16. Finalize audit trail.
 	outputSteps := wf.Output.Steps
 	if len(outputSteps) == 0 {
 		for _, step := range wf.Steps {
@@ -243,7 +262,7 @@ func run() int {
 		fmt.Fprintf(os.Stderr, "warning: finalizing audit: %v\n", err)
 	}
 
-	// 16. Print output to stdout.
+	// 17. Print output to stdout.
 	fmt.Print(output)
 
 	if failed {
@@ -251,4 +270,40 @@ func run() int {
 		return 1
 	}
 	return 0
+}
+
+// terminalInputHandler is the interactive-mode callback that presents
+// the LLM's clarification question to the user on stderr and reads
+// their answer from stdin.
+//
+// When the LLM provides predefined choices, they are displayed as a
+// numbered list. The user can either type a choice number or provide
+// a freeform answer.
+//
+// This function blocks until the user provides input, which is the
+// expected behavior — the workflow step pauses while waiting.
+//
+// If stdin is closed (e.g., piped input exhausted) or the user sends
+// an interrupt, an error is returned, which will cause the step to fail.
+func terminalInputHandler(question string, choices []string) (string, error) {
+	fmt.Fprintf(os.Stderr, "\n--- Agent needs clarification ---\n")
+	fmt.Fprintf(os.Stderr, "%s\n", question)
+
+	if len(choices) > 0 {
+		// Display numbered choices so the user can pick by number.
+		for i, c := range choices {
+			fmt.Fprintf(os.Stderr, "  [%d] %s\n", i+1, c)
+		}
+		fmt.Fprintf(os.Stderr, "Enter choice number or type your answer: ")
+	} else {
+		fmt.Fprintf(os.Stderr, "> ")
+	}
+
+	reader := bufio.NewReader(os.Stdin)
+	answer, err := reader.ReadString('\n')
+	if err != nil {
+		return "", fmt.Errorf("reading user input: %w", err)
+	}
+
+	return strings.TrimSpace(answer), nil
 }

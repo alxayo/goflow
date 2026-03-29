@@ -33,6 +33,11 @@ type Config struct {
 	LogLevel         string             `yaml:"log_level"`
 	AgentSearchPaths []string           `yaml:"agent_search_paths"`
 	MaxConcurrency   int                `yaml:"max_concurrency"`
+
+	// Interactive enables the ask_user tool for all steps in this workflow,
+	// allowing agents to pause and request clarification from the user.
+	// When false (default), agents run autonomously without user interaction.
+	Interactive bool `yaml:"interactive"`
 }
 
 // SharedMemoryConfig controls shared memory between parallel agents.
@@ -85,6 +90,14 @@ type Step struct {
 	// instructions, and hooks should be discovered and added for this
 	// step only, extending the CLI baseline.
 	ExtraDirs []string `yaml:"extra_dirs"`
+
+	// Interactive controls whether this step's agent can ask the user for
+	// clarification via the ask_user tool. Uses a pointer to support
+	// three states:
+	//   - nil (unset): inherit from workflow config or CLI flag
+	//   - true: enable user input for this step regardless of config
+	//   - false: disable user input for this step regardless of config
+	Interactive *bool `yaml:"interactive,omitempty"`
 }
 
 // Condition defines when a step should execute based on a prior step's output.
@@ -129,4 +142,36 @@ type StepResult struct {
 	StartedAt string     `json:"started_at"`
 	EndedAt   string     `json:"ended_at"`
 	SessionID string     `json:"session_id,omitempty"`
+}
+
+// IsInteractive resolves whether a specific step should allow user input.
+// The resolution priority (highest to lowest) is:
+//  1. Step-level Interactive field (explicit per-step override)
+//  2. Workflow-level config.interactive setting
+//
+// The CLI --interactive flag acts as a mechanism gate: it ensures the user-input
+// handler is wired up so that interactive steps can actually prompt the user.
+// It does NOT make all unset steps interactive — only config.interactive: true
+// in the workflow does that. This means a step without an explicit interactive
+// setting runs non-interactively unless the workflow itself opts all steps in.
+//
+// To make a specific step interactive regardless of global settings, set
+// interactive: true on the step. To exclude a step even when the workflow
+// sets config.interactive: true, set interactive: false on the step.
+func IsInteractive(step Step, wfInteractive, cliInteractive bool) bool {
+	// Step-level override takes highest precedence when explicitly set.
+	if step.Interactive != nil {
+		return *step.Interactive
+	}
+	// Fall back to workflow-level config only.
+	// The CLI flag is not used here; it only controls whether the handler
+	// is wired up (see main.go), not the per-step default.
+	return wfInteractive
+}
+
+// BoolPtr returns a pointer to the given bool value.
+// This is a convenience helper for constructing Step literals with an
+// explicit Interactive field in tests and YAML parsing.
+func BoolPtr(b bool) *bool {
+	return &b
 }

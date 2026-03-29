@@ -24,6 +24,16 @@ type StepExecutor struct {
 	// DefaultModel is the workflow-level fallback model from config.model.
 	// Used when neither the step nor the agent specifies a model.
 	DefaultModel string
+
+	// Interactive is the resolved interactive flag for the current step.
+	// Set by the orchestrator before each Execute() call based on the
+	// three-level resolution (step > workflow config > CLI flag).
+	// When true, the session allows the LLM to ask the user questions.
+	Interactive bool
+
+	// OnUserInput is the callback invoked when the LLM requests user
+	// clarification. Only used when Interactive is true.
+	OnUserInput UserInputHandler
 }
 
 // Execute runs a single step and returns its result.
@@ -75,11 +85,15 @@ func (se *StepExecutor) Execute(
 	}
 
 	// 4. Build session config from agent.
+	// Include the interactive flag and user-input handler so the session
+	// knows whether to allow the LLM to ask clarification questions.
 	sessionCfg := SessionConfig{
 		SystemPrompt: agent.Prompt,
 		Tools:        agent.Tools,
 		ExtraDirs:    step.ExtraDirs,
 		Models:       se.resolveModels(step, agent),
+		Interactive:  se.Interactive,
+		OnUserInput:  se.OnUserInput,
 	}
 
 	// 5. Create SDK session.
@@ -143,6 +157,7 @@ func (se *StepExecutor) writeSkippedAudit(step workflow.Step, agent *agents.Agen
 		DependsOn:    step.DependsOn,
 		Condition:    step.Condition,
 		ConditionMet: &condMet,
+		Interactive:  se.Interactive,
 	}
 	_ = sl.WriteStepMeta(meta)
 }
@@ -169,6 +184,7 @@ func (se *StepExecutor) writeFailedAudit(sl *audit.StepLogger, step workflow.Ste
 		ConditionMet: &condMet,
 		SessionID:    result.SessionID,
 		Error:        result.ErrorMsg,
+		Interactive:  se.Interactive,
 	}
 	_ = sl.WriteStepMeta(meta)
 }
@@ -191,6 +207,7 @@ func (se *StepExecutor) writeCompletedAudit(sl *audit.StepLogger, step workflow.
 		Condition:    step.Condition,
 		ConditionMet: &condMet,
 		SessionID:    result.SessionID,
+		Interactive:  se.Interactive,
 	}
 	_ = sl.WriteStepMeta(meta)
 }

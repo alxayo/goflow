@@ -1,0 +1,96 @@
+name: "learning-path"
+description: "Personalized learning path generator: asks the user what skill to learn, researches resources in parallel, then curates a custom plan"
+
+config:
+  model: "gpt-4.1"
+  audit_dir: ".workflow-runs"
+  audit_retention: 10
+  interactive: false
+
+agents:
+  skill-interviewer:
+    file: "./agents/skill-interviewer.agent.md"
+  beginner-researcher:
+    file: "./agents/beginner-researcher.agent.md"
+  advanced-researcher:
+    file: "./agents/advanced-researcher.agent.md"
+  path-curator:
+    file: "./agents/path-curator.agent.md"
+
+steps:
+  # Step 1: Ask the user what they want to learn and assess their level (interactive)
+  - id: assess
+    agent: skill-interviewer
+    interactive: true
+    prompt: |
+      Ask the user what skill or topic they want to learn.
+      Through conversation, determine:
+      - The specific skill or topic (be precise — "Rust" not just "programming")
+      - Their current level (complete beginner, some experience, intermediate, advanced-wanting-mastery)
+      - How much time they can dedicate (hours per week)
+      - Their learning style preference (videos, reading, hands-on projects, courses)
+      - Their goal (career switch, side project, curiosity, certification, etc.)
+
+      Summarize their learning profile when you have enough context.
+
+  # Step 2a: Research beginner/foundational resources (parallel)
+  - id: research-beginner
+    agent: beginner-researcher
+    depends_on: [assess]
+    prompt: |
+      The user wants to learn a new skill. Here is their profile:
+
+      {{steps.assess.output}}
+
+      Research and compile beginner-friendly resources for this topic:
+      - Free online tutorials and guides
+      - Recommended introductory books
+      - Beginner video courses or playlists
+      - Interactive exercises or coding challenges (if applicable)
+      - Community forums and Discord servers for beginners
+      - Common beginner mistakes to avoid
+
+  # Step 2b: Research advanced/deep-dive resources (parallel)
+  - id: research-advanced
+    agent: advanced-researcher
+    depends_on: [assess]
+    prompt: |
+      The user wants to learn a new skill. Here is their profile:
+
+      {{steps.assess.output}}
+
+      Research and compile intermediate-to-advanced resources:
+      - In-depth books and technical references
+      - Advanced courses and workshops
+      - Real-world project ideas (progressively harder)
+      - Open-source projects to contribute to
+      - Conference talks and expert blogs
+      - Certifications or credentials worth pursuing
+      - Industry best practices and patterns
+
+  # Step 3: Curate a personalized learning path
+  - id: curate
+    agent: path-curator
+    depends_on: [research-beginner, research-advanced]
+    prompt: |
+      Create a personalized learning path for this user.
+
+      ## User Profile
+      {{steps.assess.output}}
+
+      ## Beginner Resources
+      {{steps.research-beginner.output}}
+
+      ## Advanced Resources
+      {{steps.research-advanced.output}}
+
+      Build a week-by-week learning path that:
+      - Starts at their current level
+      - Matches their available time commitment
+      - Aligns with their preferred learning style
+      - Progresses toward their stated goal
+      - Includes milestones and checkpoints
+
+output:
+  steps: [curate]
+  format: "markdown"

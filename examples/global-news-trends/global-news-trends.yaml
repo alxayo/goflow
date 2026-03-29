@@ -1,0 +1,130 @@
+name: "global-news-trends"
+description: "Scan 7 international news outlets in parallel, extract headlines, and identify globally trending topics"
+
+inputs:
+  site_bbc:
+    description: "BBC News URL"
+    default: "https://www.bbc.com/news"
+  site_nytimes:
+    description: "New York Times URL"
+    default: "https://www.nytimes.com"
+  site_guardian:
+    description: "The Guardian URL"
+    default: "https://www.theguardian.com"
+  site_yahoo:
+    description: "Yahoo News URL"
+    default: "https://news.yahoo.com"
+  site_aljazeera:
+    description: "Al Jazeera URL"
+    default: "https://www.aljazeera.com"
+  site_dw:
+    description: "Deutsche Welle URL"
+    default: "https://www.dw.com/en"
+  site_euronews:
+    description: "Euronews URL"
+    default: "https://www.euronews.com"
+
+config:
+  model: "gpt-4.1"
+  audit_dir: ".workflow-runs"
+  audit_retention: 10
+  max_concurrency: 7
+  shared_memory:
+    enabled: false
+
+agents:
+  bbc-scanner:
+    file: "./agents/bbc-scanner.agent.md"
+  nytimes-scanner:
+    file: "./agents/nytimes-scanner.agent.md"
+  guardian-scanner:
+    file: "./agents/guardian-scanner.agent.md"
+  yahoo-scanner:
+    file: "./agents/yahoo-scanner.agent.md"
+  aljazeera-scanner:
+    file: "./agents/aljazeera-scanner.agent.md"
+  dw-scanner:
+    file: "./agents/dw-scanner.agent.md"
+  euronews-scanner:
+    file: "./agents/euronews-scanner.agent.md"
+  global-trend-analyzer:
+    file: "./agents/global-trend-analyzer.agent.md"
+
+skills:
+  - "./skills/news-extraction/SKILL.md"
+
+steps:
+  # --- Fan-out: 7 parallel headline scans (no dependencies between them) ---
+
+  - id: scan-bbc
+    agent: bbc-scanner
+    prompt: "Fetch and extract the latest headlines from: {{inputs.site_bbc}}"
+
+  - id: scan-nytimes
+    agent: nytimes-scanner
+    prompt: "Fetch and extract the latest headlines from: {{inputs.site_nytimes}}"
+
+  - id: scan-guardian
+    agent: guardian-scanner
+    prompt: "Fetch and extract the latest headlines from: {{inputs.site_guardian}}"
+
+  - id: scan-yahoo
+    agent: yahoo-scanner
+    prompt: "Fetch and extract the latest headlines from: {{inputs.site_yahoo}}"
+
+  - id: scan-aljazeera
+    agent: aljazeera-scanner
+    prompt: "Fetch and extract the latest headlines from: {{inputs.site_aljazeera}}"
+
+  - id: scan-dw
+    agent: dw-scanner
+    prompt: "Fetch and extract the latest headlines from: {{inputs.site_dw}}"
+
+  - id: scan-euronews
+    agent: euronews-scanner
+    prompt: "Fetch and extract the latest headlines from: {{inputs.site_euronews}}"
+
+  # --- Fan-in: aggregate all headlines and identify global trends ---
+
+  - id: analyze-trends
+    agent: global-trend-analyzer
+    prompt: |
+      Analyze the following headlines from 7 major international news sources.
+      Identify which topics are trending across multiple outlets.
+      Note where different outlets frame the same story differently.
+
+      ## BBC News (UK)
+      {{steps.scan-bbc.output}}
+
+      ## New York Times (US)
+      {{steps.scan-nytimes.output}}
+
+      ## The Guardian (UK)
+      {{steps.scan-guardian.output}}
+
+      ## Yahoo News (US aggregator)
+      {{steps.scan-yahoo.output}}
+
+      ## Al Jazeera (Qatar)
+      {{steps.scan-aljazeera.output}}
+
+      ## DW News (Germany)
+      {{steps.scan-dw.output}}
+
+      ## Euronews (EU)
+      {{steps.scan-euronews.output}}
+    depends_on:
+      - scan-bbc
+      - scan-nytimes
+      - scan-guardian
+      - scan-yahoo
+      - scan-aljazeera
+      - scan-dw
+      - scan-euronews
+
+output:
+  steps: [analyze-trends]
+  format: "markdown"
+  truncate:
+    strategy: "chars"
+    limit: 8000

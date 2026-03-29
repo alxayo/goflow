@@ -35,18 +35,23 @@ A comprehensive guide to understanding, configuring, and building workflows with
 11. [Audit Trail](#11-audit-trail)
     - [Directory Structure](#directory-structure)
     - [Retention Policy](#retention-policy)
-12. [Mock Mode — Testing Without LLMs](#12-mock-mode--testing-without-llms)
-13. [Practical Guide: Building Workflows](#13-practical-guide-building-workflows)
+12. [Interactive Mode — Clarification Questions](#12-interactive-mode--clarification-questions)
+    - [How It Works](#how-it-works-1)
+    - [Enabling Interactive Mode](#enabling-interactive-mode)
+    - [Per-Step Control](#per-step-control)
+    - [Parallelism Behavior](#parallelism-behavior)
+13. [Mock Mode — Testing Without LLMs](#13-mock-mode--testing-without-llms)
+14. [Practical Guide: Building Workflows](#14-practical-guide-building-workflows)
     - [Step 1: Define Your Agents](#step-1-define-your-agents)
     - [Step 2: Map Out Steps and Dependencies](#step-2-map-out-steps-and-dependencies)
     - [Step 3: Write the Workflow YAML](#step-3-write-the-workflow-yaml)
     - [Step 4: Test with Mock Mode](#step-4-test-with-mock-mode)
     - [Step 5: Run for Real](#step-5-run-for-real)
-14. [Examples](#14-examples)
+15. [Examples](#15-examples)
     - [Minimal Sequential Workflow](#minimal-sequential-workflow)
     - [Parallel Fan-Out / Fan-In Pipeline](#parallel-fan-out--fan-in-pipeline)
     - [Conditional Branching](#conditional-branching)
-15. [Troubleshooting](#15-troubleshooting)
+16. [Troubleshooting](#16-troubleshooting)
 
 ---
 
@@ -234,6 +239,7 @@ workflow-runner run [options]
 | `--inputs` | No | Key=value input pair. Repeatable for multiple inputs |
 | `--audit-dir` | No | Override the audit directory (default: from workflow `config.audit_dir`) |
 | `--mock` | No | Use the mock executor instead of Copilot CLI |
+| `--interactive` | No | Allow agents to pause and ask clarification questions via the terminal |
 | `--verbose` | No | Print step statuses, timing, and debug info to stderr |
 
 ### Input Handling
@@ -317,6 +323,7 @@ Reference inputs in step prompts with `{{inputs.files}}` or `{{inputs.severity_f
 ```yaml
 config:
   model: "gpt-4o"                  # Default model for agents without one
+  interactive: false               # Allow agents to ask clarification questions (see §12)
   audit_dir: ".workflow-runs"      # Where audit trails are stored
   audit_retention: 10              # Keep last N runs (0 = keep all)
   max_concurrency: 3               # Max parallel steps (0 = unlimited)
@@ -341,6 +348,7 @@ config:
 | `audit_dir` | string | `.workflow-runs` | Directory for run audit trails |
 | `audit_retention` | int | `0` | Max runs to keep (0 = unlimited) |
 | `max_concurrency` | int | `0` | Max parallel step goroutines (0 = unlimited) |
+| `interactive` | bool | `false` | Enable interactive mode for all steps (agents may ask clarification questions). See [§12](#12-interactive-mode--clarification-questions). |
 | `streaming` | bool | `false` | Reserved for streaming output support |
 | `log_level` | string | `info` | Logging verbosity |
 | `agent_search_paths` | []string | `[]` | Additional directories to scan for `.agent.md` files |
@@ -409,6 +417,7 @@ steps:
     on_error: ""                      # Optional. Error handling strategy.
     retry_count: 0                    # Optional. Number of retries on failure.
     timeout: ""                       # Optional. Step timeout duration.
+    interactive: true                 # Optional. Override interactive mode for this step.
 ```
 
 | Field | Type | Required | Description |
@@ -422,6 +431,7 @@ steps:
 | `on_error` | string | No | Error handling strategy (reserved for future use). |
 | `retry_count` | int | No | Number of retries on failure (reserved for future use). |
 | `timeout` | string | No | Step timeout (reserved for future use). |
+| `interactive` | bool (pointer) | No | Override interactive mode for this step. `true` forces interactive, `false` forces non-interactive, omitted inherits from config/CLI. See [§12](#12-interactive-mode--clarification-questions). |
 
 **Validation rules:**
 - Step IDs must be unique within a workflow.
@@ -585,7 +595,7 @@ The **frontmatter** (between `---` delimiters) contains structured metadata. The
 |---|---|---|
 | `name` | string | Agent name. Defaults to the filename stem if omitted. |
 | `description` | string | Human-readable description |
-| `tools` | []string | Tools the agent can use (e.g., `grep`, `glob`, `view`, `bash`) |
+| `tools` | []string | Copilot CLI tool names the agent can use (e.g., `grep`, `glob`, `view`, `bash`). Both YAML block and flow formats are valid: `tools: ['grep', 'view']` or as a list. |
 | `model` | string or []string | LLM model name(s). First in list is preferred. |
 | `agents` | []string | Subagents this agent can delegate to |
 | `mcp-servers` | object | MCP server configurations per agent |
@@ -658,14 +668,26 @@ Workflow Runner searches for agent files in multiple locations, with a defined p
 
 Files must have the `.agent.md` or `.md` extension. Directories that don't exist are silently skipped.
 
+### Tool Naming Conventions
+
+Tool names differ across platforms that use the `.agent.md` format:
+
+| Platform | Naming Style | Example |
+|---|---|---|
+| **Copilot CLI** (used by workflow-runner) | lowercase | `grep`, `view`, `bash` |
+| **VS Code** | `category/toolName` or set name | `search/textSearch`, `read/readFile`, or `search` |
+| **Claude Code** | PascalCase | `Read`, `Grep`, `Bash` |
+
+When authoring agent files for workflow-runner, use **Copilot CLI tool names** — these are the names passed to the CLI's `--available-tools` flag.
+
 ### Claude-Format Compatibility
 
 Agent files found under `.claude/agents/` are automatically normalized:
 
 - Comma-separated tool strings (e.g., `"Read, Grep, Bash"`) are split into arrays.
-- Tool names are mapped to VS Code equivalents:
+- Tool names are mapped to Copilot CLI equivalents:
 
-| Claude Name | VS Code Name |
+| Claude Name | Copilot CLI Name |
 |---|---|
 | `Read` | `view` |
 | `Grep` | `grep` |
@@ -675,7 +697,7 @@ Agent files found under `.claude/agents/` are automatically normalized:
 | `Edit` | `replace_string_in_file` |
 | `MultiEdit` | `multi_replace_string_in_file` |
 
-Unknown tool names are kept as-is.
+Unknown tool names (e.g., `WebFetch`, `Agent`, `WebSearch`) are kept as-is and passed through to the CLI without transformation.
 
 ---
 
@@ -926,6 +948,7 @@ Every workflow run creates a full audit trail for transparency, debugging, and r
   "depends_on": ["analyze"],
   "condition": null,
   "condition_result": true,
+  "interactive": false,
   "session_id": "copilot-cli-2"
 }
 ```
@@ -945,7 +968,94 @@ Set to `0` to keep all runs (no automatic cleanup).
 
 ---
 
-## 12. Mock Mode — Testing Without LLMs
+## 12. Interactive Mode — Clarification Questions
+
+By default, Workflow Runner runs every step in **non-interactive mode**: the Copilot CLI flag `--no-ask-user` is passed, and agents cannot pause to ask the user for input. Interactive mode lifts this restriction, allowing agents to ask clarification questions mid-execution and wait for your response in the terminal.
+
+### How It Works
+
+When a step runs in interactive mode:
+
+1. The `--no-ask-user` flag is **omitted** from the underlying Copilot CLI invocation.
+2. The CLI's standard input is connected to your terminal, so the LLM can prompt you with a question.
+3. Your answer is read from stdin and sent back to the agent.
+4. The agent continues execution with your clarification.
+
+Questions and choices are printed to **stderr** (so they don't mix with captured output), and your typed answer is read from **stdin**.
+
+### Enabling Interactive Mode
+
+There are three levels of control, evaluated in priority order:
+
+| Level | Where | Effect |
+|---|---|---|
+| **Step override** (highest) | `steps[].interactive: true/false` | Forces this specific step interactive or non-interactive. |
+| **Workflow config** | `config.interactive: true` | Enables interactive mode for all steps that don't have a step-level override. |
+| **CLI flag** (lowest) | `--interactive` | Enables interactive mode for all steps that don't have a step or config override. |
+
+A step is interactive if **any** of the three levels enables it and no higher-priority level disables it.
+
+**CLI flag:**
+
+```bash
+workflow-runner run --workflow pipeline.yaml --interactive
+```
+
+**Workflow config:**
+
+```yaml
+config:
+  interactive: true    # All steps can ask questions
+```
+
+**Per-step override:**
+
+```yaml
+steps:
+  - id: gather-requirements
+    agent: requirements-agent
+    prompt: "What features should this module support?"
+    interactive: true    # This step can ask questions
+
+  - id: generate-code
+    agent: code-generator
+    prompt: "Generate code based on: {{steps.gather-requirements.output}}"
+    interactive: false   # This step runs silently
+```
+
+### Per-Step Control
+
+The step-level `interactive` field is a pointer (`*bool` in Go). This three-state design means:
+
+- **`interactive: true`** — always interactive, even if config and CLI say otherwise.
+- **`interactive: false`** — never interactive, even if config or CLI enable it.
+- **omitted** — inherits from `config.interactive` OR the `--interactive` CLI flag.
+
+This lets you build workflows where most steps run silently but one specific step pauses for human input.
+
+### Parallelism Behavior
+
+When interactive steps appear in a parallel group (same DAG level), the orchestrator separates them:
+
+1. **Non-interactive steps** run concurrently as usual.
+2. **Interactive steps** run sequentially **after** all non-interactive steps in the group complete.
+
+This prevents overlapping terminal prompts from multiple agents asking questions at the same time.
+
+```
+DAG Level 2:  [step-A (non-interactive), step-B (interactive), step-C (non-interactive)]
+
+Execution:    step-A ──┐
+              step-C ──┘──► step-B (waits, then runs alone)
+```
+
+### Audit Trail
+
+The `step.meta.json` file includes an `interactive` field (`true`/`false`) that records whether the step ran in interactive mode. This is useful for understanding post-hoc which steps had human input.
+
+---
+
+## 13. Mock Mode — Testing Without LLMs
 
 Mock mode lets you validate workflow structure, DAG ordering, template resolution, and conditions without calling the Copilot CLI or any LLM.
 
@@ -967,7 +1077,7 @@ Mock mode is useful for:
 
 ---
 
-## 13. Practical Guide: Building Workflows
+## 14. Practical Guide: Building Workflows
 
 ### Step 1: Define Your Agents
 
@@ -1108,7 +1218,7 @@ Review the audit trail in `.workflow-runs/` to see the exact prompts sent and ou
 
 ---
 
-## 14. Examples
+## 15. Examples
 
 ### Minimal Sequential Workflow
 
@@ -1304,7 +1414,7 @@ Only one of the two conditional steps will produce output.
 
 ---
 
-## 15. Troubleshooting
+## 16. Troubleshooting
 
 ### "copilot CLI not found"
 

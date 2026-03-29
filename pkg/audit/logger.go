@@ -134,6 +134,12 @@ type StepMeta struct {
 	ConditionMet *bool               `json:"condition_result,omitempty"`
 	SessionID    string              `json:"session_id,omitempty"`
 	Error        string              `json:"error,omitempty"`
+
+	// Interactive records whether this step was configured to allow user
+	// input via the ask_user tool. This is useful for understanding why
+	// a step may have taken longer (waiting for user) or for reproducing
+	// the run conditions.
+	Interactive bool `json:"interactive"`
 }
 
 // NewStepLogger creates the step subdirectory and returns a StepLogger.
