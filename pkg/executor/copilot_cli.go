@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 	"sync/atomic"
@@ -51,6 +50,27 @@ type CopilotCLISession struct {
 func (s *CopilotCLISession) Send(ctx context.Context, prompt string) (string, error) {
 	finalPrompt := composePrompt(s.cfg.SystemPrompt, prompt)
 
+	// Interactive workflow steps are handled by explicitly asking the user for
+	// one round of input through the provided callback, then continuing in
+	// scripted mode. This guarantees the workflow pauses for terminal input.
+	if s.cfg.Interactive {
+		if s.cfg.OnUserInput == nil {
+			return "", errors.New("interactive mode enabled but no user input handler configured")
+		}
+
+		question := interactiveQuestionFromPrompt(prompt)
+		answer, err := s.cfg.OnUserInput(question, nil)
+		if err != nil {
+			return "", fmt.Errorf("getting user input: %w", err)
+		}
+
+		finalPrompt = fmt.Sprintf(
+			"%s\n\nUser clarification:\n%s",
+			finalPrompt,
+			strings.TrimSpace(answer),
+		)
+	}
+
 	// Try each model in the priority list, then fall back to CLI default.
 	modelsToTry := append([]string{}, s.cfg.Models...)
 	modelsToTry = append(modelsToTry, "") // Empty string = CLI default model
@@ -80,26 +100,21 @@ func (s *CopilotCLISession) Send(ctx context.Context, prompt string) (string, er
 // tryWithModel attempts to run the prompt with a specific model.
 // If model is empty, runs without --model flag (CLI picks default).
 //
-// When the session is configured as interactive (cfg.Interactive == true),
-// the --no-ask-user flag is omitted, allowing the Copilot CLI's built-in
-// ask_user tool to function. In this mode, the CLI may pause and prompt
-// the user for input via the terminal's stdin/stdout.
+// For interactive steps, the CLI is launched with -i (interactive REPL mode).
+// The ask_user tool is ONLY available in -i mode; in -p mode it is not
+// registered. The -i flag starts a multi-turn conversation where the LLM
+// can call ask_user to pause and get user input. The user exits the session
+// via Ctrl+D or /exit when the conversation is done.
 //
-// When the session is NOT interactive (the default), --no-ask-user is
-// passed to suppress any user interaction, making the step fully autonomous.
+// For non-interactive steps, -p -s --no-ask-user are used for single-shot
+// autonomous execution with clean scripting output.
 func (s *CopilotCLISession) tryWithModel(ctx context.Context, prompt, model string) (string, error) {
 	args := []string{
 		"--no-color",
 		"-s",
 		"-p",
 		prompt,
-	}
-
-	// Only suppress user interaction when the step is NOT interactive.
-	// When interactive, the CLI's ask_user tool is available, allowing
-	// the LLM to pause and ask the user for clarification.
-	if !s.cfg.Interactive {
-		args = append(args, "--no-ask-user")
+		"--no-ask-user",
 	}
 
 	// If the agent specifies an explicit tools list, restrict to those tools.
@@ -167,18 +182,13 @@ func (s *CopilotCLISession) runCopilot(ctx context.Context, args []string) (stri
 	cmd := exec.CommandContext(ctx, s.binaryPath, args...)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
+
+	// All modes are executed as scripted commands with captured output.
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	// When running in interactive mode, connect the process's stdin to the
-	// terminal so the user can respond to ask_user prompts from the CLI.
-	// In non-interactive mode (the default), stdin is not connected, which
-	// prevents the CLI from blocking on user input.
-	if s.cfg.Interactive {
-		cmd.Stdin = os.Stdin
-	}
-
 	err := cmd.Run()
+
 	return stdout.String(), stderr.String(), err
 }
 
@@ -193,4 +203,21 @@ func composePrompt(systemPrompt, userPrompt string) string {
 		return up
 	}
 	return fmt.Sprintf("System instructions:\n%s\n\nUser task:\n%s", sp, up)
+}
+
+func interactiveQuestionFromPrompt(prompt string) string {
+	trimmed := strings.TrimSpace(prompt)
+	if trimmed == "" {
+		return "Please provide the information needed for this step."
+	}
+
+	lines := strings.Split(trimmed, "\n")
+	for _, line := range lines {
+		candidate := strings.TrimSpace(line)
+		if candidate != "" {
+			return candidate
+		}
+	}
+
+	return "Please provide the information needed for this step."
 }
