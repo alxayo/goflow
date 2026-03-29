@@ -8,6 +8,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,6 +40,8 @@ func (f *inputsFlag) Set(val string) error {
 
 const usage = `Usage: goflow run [options]
 
+       goflow version
+
 Options:
   --workflow      Path to workflow YAML file (required)
   --inputs        Key=value input pairs (repeatable)
@@ -48,20 +51,49 @@ Options:
   --verbose       Enable verbose logging
 `
 
+var (
+	version   = "dev"
+	commit    = "unknown"
+	buildDate = "unknown"
+)
+
 func main() {
 	os.Exit(run())
 }
 
 func run() int {
-	if len(os.Args) < 2 || os.Args[1] != "run" {
-		fmt.Fprint(os.Stderr, usage)
+	return runArgs(os.Args[1:], os.Stdout, os.Stderr)
+}
+
+func runArgs(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprint(stderr, usage)
 		return 1
 	}
 
+	switch args[0] {
+	case "run":
+		return runCommand(args[1:], stdout, stderr)
+	case "version", "--version", "-version":
+		fmt.Fprintln(stdout, buildInfo())
+		return 0
+	case "help", "--help", "-h":
+		fmt.Fprint(stdout, usage)
+		return 0
+	default:
+		fmt.Fprintf(stderr, "error: unknown command %q\n\n", args[0])
+		fmt.Fprint(stderr, usage)
+		return 1
+	}
+}
+
+func runCommand(args []string, stdout, stderr io.Writer) int {
+	_ = stdout
+
 	// Parse flags after the "run" subcommand.
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	fs.Usage = func() { fmt.Fprint(os.Stderr, usage) }
+	fs.SetOutput(stderr)
+	fs.Usage = func() { fmt.Fprint(stderr, usage) }
 
 	workflowPath := fs.String("workflow", "", "Path to workflow YAML file (required)")
 	auditDirFlag := fs.String("audit-dir", "", "Override audit directory")
@@ -71,30 +103,30 @@ func run() int {
 	inputs := &inputsFlag{values: make(map[string]string)}
 	fs.Var(inputs, "inputs", "Key=value input pair (repeatable)")
 
-	if err := fs.Parse(os.Args[2:]); err != nil {
+	if err := fs.Parse(args); err != nil {
 		return 1
 	}
 
 	if *workflowPath == "" {
-		fmt.Fprintln(os.Stderr, "error: --workflow is required")
-		fmt.Fprint(os.Stderr, usage)
+		fmt.Fprintln(stderr, "error: --workflow is required")
+		fmt.Fprint(stderr, usage)
 		return 1
 	}
 
 	// 1. Load and parse workflow YAML.
 	if *verbose {
-		fmt.Fprintf(os.Stderr, "Loading workflow: %s\n", *workflowPath)
+		fmt.Fprintf(stderr, "Loading workflow: %s\n", *workflowPath)
 	}
 
 	wf, err := workflow.ParseWorkflow(*workflowPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 1
 	}
 
 	// 2. Validate workflow.
 	if err := workflow.ValidateWorkflow(wf); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 1
 	}
 
@@ -118,7 +150,7 @@ func run() int {
 	// workspaceDir is used for agent discovery in standard locations.
 	workspaceDir, err := os.Getwd()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: getting working directory: %v\n", err)
+		fmt.Fprintf(stderr, "error: getting working directory: %v\n", err)
 		return 1
 	}
 
@@ -126,19 +158,19 @@ func run() int {
 	// This allows workflows to reference agents relative to their own location.
 	absWorkflowPath, err := filepath.Abs(*workflowPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: resolving workflow path: %v\n", err)
+		fmt.Fprintf(stderr, "error: resolving workflow path: %v\n", err)
 		return 1
 	}
 	workflowDir := filepath.Dir(absWorkflowPath)
 
 	resolvedAgents, err := agents.ResolveAgents(wf, workspaceDir, workflowDir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		fmt.Fprintf(stderr, "error: %v\n", err)
 		return 1
 	}
 
 	if *verbose {
-		fmt.Fprintf(os.Stderr, "Resolved %d agents\n", len(resolvedAgents))
+		fmt.Fprintf(stderr, "Resolved %d agents\n", len(resolvedAgents))
 	}
 
 	// 5. Set up audit directory.
@@ -149,30 +181,30 @@ func run() int {
 
 	auditLogger, err := audit.NewRunLogger(auditDir, wf.Name)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: creating audit logger: %v\n", err)
+		fmt.Fprintf(stderr, "error: creating audit logger: %v\n", err)
 		return 1
 	}
 
 	// 6. Apply retention policy.
 	if err := audit.ApplyRetention(auditDir, wf.Config.AuditRetention); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: audit retention: %v\n", err)
+		fmt.Fprintf(stderr, "warning: audit retention: %v\n", err)
 		// Non-fatal — continue execution.
 	}
 
 	// 7. Write workflow meta and snapshot.
 	if err := auditLogger.WriteWorkflowMeta(wf, mergedInputs); err != nil {
-		fmt.Fprintf(os.Stderr, "error: writing workflow meta: %v\n", err)
+		fmt.Fprintf(stderr, "error: writing workflow meta: %v\n", err)
 		return 1
 	}
 	if err := auditLogger.SnapshotWorkflow(*workflowPath); err != nil {
-		fmt.Fprintf(os.Stderr, "error: snapshotting workflow: %v\n", err)
+		fmt.Fprintf(stderr, "error: snapshotting workflow: %v\n", err)
 		return 1
 	}
 
 	// 8. Create executor.
 	var sessionExecutor executor.SessionExecutor
 	if *useMock {
-		fmt.Fprintln(os.Stderr, "NOTE: Using mock executor.")
+		fmt.Fprintln(stderr, "NOTE: Using mock executor.")
 		sessionExecutor = &executor.MockSessionExecutor{DefaultResponse: "mock output"}
 	} else {
 		sessionExecutor = &executor.CopilotCLIExecutor{}
@@ -194,7 +226,7 @@ func run() int {
 	if isInteractive {
 		userInputHandler = terminalInputHandler
 		if *verbose {
-			fmt.Fprintln(os.Stderr, "Interactive mode enabled — agents may ask for clarification")
+			fmt.Fprintln(stderr, "Interactive mode enabled — agents may ask for clarification")
 		}
 	}
 
@@ -209,7 +241,7 @@ func run() int {
 	}
 
 	if *verbose {
-		fmt.Fprintf(os.Stderr, "Executing workflow: %s\n", wf.Name)
+		fmt.Fprintf(stderr, "Executing workflow: %s\n", wf.Name)
 	}
 
 	startTime := time.Now()
@@ -221,10 +253,10 @@ func run() int {
 	if *verbose {
 		for _, step := range wf.Steps {
 			if r, ok := results[step.ID]; ok && r != nil {
-				fmt.Fprintf(os.Stderr, "Step %s: %s\n", step.ID, r.Status)
+				fmt.Fprintf(stderr, "Step %s: %s\n", step.ID, r.Status)
 			}
 		}
-		fmt.Fprintf(os.Stderr, "Workflow completed in %.1fs\n", elapsed.Seconds())
+		fmt.Fprintf(stderr, "Workflow completed in %.1fs\n", elapsed.Seconds())
 	}
 
 	// 13. Determine final status.
@@ -245,7 +277,7 @@ func run() int {
 	// 15. Format output via reporter.
 	output, err := reporter.FormatOutput(results, wf.Output)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: formatting output: %v\n", err)
+		fmt.Fprintf(stderr, "error: formatting output: %v\n", err)
 		return 1
 	}
 
@@ -259,17 +291,21 @@ func run() int {
 		}
 	}
 	if err := auditLogger.FinalizeRun(finalStatus, outputMap, outputSteps); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: finalizing audit: %v\n", err)
+		fmt.Fprintf(stderr, "warning: finalizing audit: %v\n", err)
 	}
 
 	// 17. Print output to stdout.
-	fmt.Print(output)
+	fmt.Fprint(stdout, output)
 
 	if failed {
-		fmt.Fprintf(os.Stderr, "error: %v\n", runErr)
+		fmt.Fprintf(stderr, "error: %v\n", runErr)
 		return 1
 	}
 	return 0
+}
+
+func buildInfo() string {
+	return fmt.Sprintf("goflow %s\ncommit: %s\nbuilt: %s", version, commit, buildDate)
 }
 
 // terminalInputHandler is the interactive-mode callback that presents

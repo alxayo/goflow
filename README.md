@@ -78,6 +78,16 @@ Step outputs are stored in:
 - examples/.workflow-runs/<run-id>/steps/01_perf-review/output.md
 - examples/.workflow-runs/<run-id>/steps/02_summary/output.md
 
+### 5. Show build version
+
+Release builds expose embedded build metadata:
+
+```bash
+goflow version
+```
+
+The output includes the semantic version tag, short commit SHA, and build timestamp.
+
 ## Releases
 
 The repository includes a manual GitHub Actions release workflow at [.github/workflows/release.yml](.github/workflows/release.yml).
@@ -89,4 +99,33 @@ From the Actions tab, run `Release` and provide a semantic version without the l
 - build release archives for Linux (`amd64`, `arm64`), macOS (`amd64`, `arm64`), Windows (`amd64`), and Windows on Arm (`arm64`)
 - create a GitHub Release tagged as `v<version>`
 - upload platform archives plus a SHA-256 checksum file
+- generate a Homebrew formula asset (`goflow.rb`) and Scoop manifest asset (`goflow.json`)
 - prepend any operator notes you enter and append GitHub-generated release notes as the changelog
+
+The repository also includes a dry-run validation workflow at [.github/workflows/release-validate.yml](.github/workflows/release-validate.yml). It runs on pull requests and can also be triggered manually to test the cross-platform packaging pipeline without creating a tag or publishing a release.
+
+### Homebrew and Scoop
+
+Each release produces two package manager metadata files:
+
+- `goflow.rb`: a Homebrew formula that points to the macOS and Linux release archives and embeds the correct SHA-256 values for Intel and Arm builds.
+- `goflow.json`: a Scoop manifest that points to the Windows `amd64` and `arm64` archives and embeds their SHA-256 values.
+
+These files are always attached to the GitHub Release as assets. That gives you two operating modes:
+
+1. **Metadata only:** download the generated files from the release and publish them yourself.
+2. **Direct publishing from Actions:** let the workflow push them to a Homebrew tap and Scoop bucket automatically.
+
+To enable direct publishing, configure these repository settings:
+
+- Repository variable `HOMEBREW_TAP_REPOSITORY`: target tap repository, for example `your-org/homebrew-tap`
+- Repository secret `HOMEBREW_TAP_TOKEN`: token with push access to that tap repository
+- Repository variable `SCOOP_BUCKET_REPOSITORY`: target bucket repository, for example `your-org/scoop-bucket`
+- Repository secret `SCOOP_BUCKET_TOKEN`: token with push access to that bucket repository
+
+When you manually trigger `Release`, you can enable `publish_homebrew` and `publish_scoop`. If enabled and the corresponding repository variable and token are present, the workflow will:
+
+- copy `goflow.rb` into `Formula/goflow.rb` in the Homebrew tap repository and push a commit
+- copy `goflow.json` into `bucket/goflow.json` in the Scoop bucket repository and push a commit
+
+That means end users can install with standard package manager commands once the tap or bucket is set up.

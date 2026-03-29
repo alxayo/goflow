@@ -1,0 +1,244 @@
+name: Release Validate
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Optional semver to test packaging with (defaults to 0.0.0-dev.<run-number>)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Prepare validation metadata
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.prepare.outputs.version }}
+      tag: ${{ steps.prepare.outputs.tag }}
+      commit_short: ${{ steps.prepare.outputs.commit_short }}
+      timestamp: ${{ steps.prepare.outputs.timestamp }}
+    steps:
+      - name: Compute validation version
+        id: prepare
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version='${{ inputs.version }}'
+          if [[ -z "$version" ]]; then
+            version="0.0.0-dev.${GITHUB_RUN_NUMBER}"
+          fi
+
+          semver_regex='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+          if [[ ! "$version" =~ $semver_regex ]]; then
+            echo "Version must be valid semantic versioning" >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "commit_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+  test:
+    name: Run test suite
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run tests
+        run: go test ./...
+
+  build:
+    name: Validate ${{ matrix.goos }}-${{ matrix.goarch }} packaging
+    needs:
+      - prepare
+      - test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            archive: tar.gz
+          - goos: linux
+            goarch: arm64
+            archive: tar.gz
+          - goos: darwin
+            goarch: amd64
+            archive: tar.gz
+          - goos: darwin
+            goarch: arm64
+            archive: tar.gz
+          - goos: windows
+            goarch: amd64
+            archive: zip
+          - goos: windows
+            goarch: arm64
+            archive: zip
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build validation archive
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version='${{ needs.prepare.outputs.version }}'
+          tag='${{ needs.prepare.outputs.tag }}'
+          commit_short='${{ needs.prepare.outputs.commit_short }}'
+          timestamp='${{ needs.prepare.outputs.timestamp }}'
+          goos='${{ matrix.goos }}'
+          goarch='${{ matrix.goarch }}'
+          archive='${{ matrix.archive }}'
+          asset_base="goflow_${version}_${goos}_${goarch}"
+          binary_name='goflow'
+
+          if [[ "$goos" == 'windows' ]]; then
+            binary_name='goflow.exe'
+          fi
+
+          rm -rf build dist
+          mkdir -p build dist
+
+          GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 \
+            go build \
+              -trimpath \
+              -ldflags "-s -w -X main.version=${tag} -X main.commit=${commit_short} -X main.buildDate=${timestamp}" \
+              -o "build/$binary_name" \
+              ./cmd/workflow-runner
+
+          cp README.md build/
+
+          if [[ "$archive" == 'zip' ]]; then
+            (
+              cd build
+              zip -r "../dist/${asset_base}.zip" .
+            )
+          else
+            tar -C build -czf "dist/${asset_base}.tar.gz" .
+          fi
+
+      - name: Upload validation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: validate-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          if-no-files-found: error
+
+  metadata:
+    name: Validate Homebrew and Scoop metadata
+    needs:
+      - prepare
+      - build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download validation artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: validate-*
+          merge-multiple: true
+          path: dist
+
+      - name: Generate checksums and package metadata
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
+          SERVER_URL: ${{ github.server_url }}
+        run: |
+          set -euo pipefail
+
+          cd dist
+          shasum -a 256 * > "goflow_${VERSION}_checksums.txt"
+
+          sha_for() {
+            shasum -a 256 "$1" | awk '{print $1}'
+          }
+
+          darwin_amd64_asset="goflow_${VERSION}_darwin_amd64.tar.gz"
+          darwin_arm64_asset="goflow_${VERSION}_darwin_arm64.tar.gz"
+          linux_amd64_asset="goflow_${VERSION}_linux_amd64.tar.gz"
+          linux_arm64_asset="goflow_${VERSION}_linux_arm64.tar.gz"
+          windows_amd64_asset="goflow_${VERSION}_windows_amd64.zip"
+          windows_arm64_asset="goflow_${VERSION}_windows_arm64.zip"
+          base_url="${SERVER_URL}/${REPOSITORY}/releases/download/${TAG}"
+
+          cat > goflow.rb <<EOF
+          class Goflow < Formula
+            desc "AI workflow orchestration engine for multi-agent LLM pipelines"
+            homepage "${SERVER_URL}/${REPOSITORY}"
+            version "${VERSION}"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "${base_url}/${darwin_arm64_asset}"
+                sha256 "$(sha_for "$darwin_arm64_asset")"
+              else
+                url "${base_url}/${darwin_amd64_asset}"
+                sha256 "$(sha_for "$darwin_amd64_asset")"
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.arm?
+                url "${base_url}/${linux_arm64_asset}"
+                sha256 "$(sha_for "$linux_arm64_asset")"
+              else
+                url "${base_url}/${linux_amd64_asset}"
+                sha256 "$(sha_for "$linux_amd64_asset")"
+              end
+            end
+
+            def install
+              bin.install "goflow"
+            end
+          end
+          EOF
+
+          cat > goflow.json <<EOF
+          {
+            "version": "${VERSION}",
+            "description": "AI workflow orchestration engine for multi-agent LLM pipelines",
+            "homepage": "${SERVER_URL}/${REPOSITORY}",
+            "architecture": {
+              "64bit": {
+                "url": "${base_url}/${windows_amd64_asset}",
+                "hash": "$(sha_for "$windows_amd64_asset")"
+              },
+              "arm64": {
+                "url": "${base_url}/${windows_arm64_asset}",
+                "hash": "$(sha_for "$windows_arm64_asset")"
+              }
+            },
+            "bin": "goflow.exe"
+          }
+          EOF
+
+      - name: Upload release preview bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-preview
+          path: dist/*
+          if-no-files-found: error

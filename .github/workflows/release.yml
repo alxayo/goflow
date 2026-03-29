@@ -11,6 +11,16 @@ on:
         description: "Optional operator notes to prepend before the generated changelog"
         required: false
         type: string
+      publish_homebrew:
+        description: "Publish the generated formula to the configured Homebrew tap"
+        required: true
+        default: false
+        type: boolean
+      publish_scoop:
+        description: "Publish the generated manifest to the configured Scoop bucket"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -27,6 +37,8 @@ jobs:
       version: ${{ steps.validate.outputs.version }}
       tag: ${{ steps.validate.outputs.tag }}
       prerelease: ${{ steps.validate.outputs.prerelease }}
+      commit_short: ${{ steps.validate.outputs.commit_short }}
+      timestamp: ${{ steps.validate.outputs.timestamp }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -63,6 +75,8 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+          echo "commit_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - name: Summarize release plan
         run: |
@@ -71,6 +85,8 @@ jobs:
             echo "- Tag: ${{ steps.validate.outputs.tag }}"
             echo "- Prerelease: ${{ steps.validate.outputs.prerelease }}"
             echo "- Platforms: linux amd64/arm64, macOS amd64/arm64, windows amd64/arm64"
+            echo "- Publish Homebrew: ${{ inputs.publish_homebrew }}"
+            echo "- Publish Scoop: ${{ inputs.publish_scoop }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
   test:
@@ -135,6 +151,8 @@ jobs:
 
           version='${{ needs.prepare.outputs.version }}'
           tag='${{ needs.prepare.outputs.tag }}'
+          commit_short='${{ needs.prepare.outputs.commit_short }}'
+          timestamp='${{ needs.prepare.outputs.timestamp }}'
           goos='${{ matrix.goos }}'
           goarch='${{ matrix.goarch }}'
           archive='${{ matrix.archive }}'
@@ -151,7 +169,7 @@ jobs:
           GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 \
             go build \
               -trimpath \
-              -ldflags "-s -w" \
+              -ldflags "-s -w -X main.version=${tag} -X main.commit=${commit_short} -X main.buildDate=${timestamp}" \
               -o "build/$binary_name" \
               ./cmd/workflow-runner
 
@@ -190,15 +208,97 @@ jobs:
           merge-multiple: true
           path: dist
 
-      - name: Generate checksums
+      - name: Generate checksums and package metadata
         shell: bash
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
+          SERVER_URL: ${{ github.server_url }}
         run: |
           set -euo pipefail
-          version='${{ needs.prepare.outputs.version }}'
-          (
-            cd dist
-            shasum -a 256 * > "goflow_${version}_checksums.txt"
-          )
+
+          cd dist
+          shasum -a 256 * > "goflow_${VERSION}_checksums.txt"
+
+          sha_for() {
+            shasum -a 256 "$1" | awk '{print $1}'
+          }
+
+          darwin_amd64_asset="goflow_${VERSION}_darwin_amd64.tar.gz"
+          darwin_arm64_asset="goflow_${VERSION}_darwin_arm64.tar.gz"
+          linux_amd64_asset="goflow_${VERSION}_linux_amd64.tar.gz"
+          linux_arm64_asset="goflow_${VERSION}_linux_arm64.tar.gz"
+          windows_amd64_asset="goflow_${VERSION}_windows_amd64.zip"
+          windows_arm64_asset="goflow_${VERSION}_windows_arm64.zip"
+          base_url="${SERVER_URL}/${REPOSITORY}/releases/download/${TAG}"
+
+          cat > goflow.rb <<EOF
+          class Goflow < Formula
+            desc "AI workflow orchestration engine for multi-agent LLM pipelines"
+            homepage "${SERVER_URL}/${REPOSITORY}"
+            version "${VERSION}"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "${base_url}/${darwin_arm64_asset}"
+                sha256 "$(sha_for "$darwin_arm64_asset")"
+              else
+                url "${base_url}/${darwin_amd64_asset}"
+                sha256 "$(sha_for "$darwin_amd64_asset")"
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.arm?
+                url "${base_url}/${linux_arm64_asset}"
+                sha256 "$(sha_for "$linux_arm64_asset")"
+              else
+                url "${base_url}/${linux_amd64_asset}"
+                sha256 "$(sha_for "$linux_amd64_asset")"
+              end
+            end
+
+            def install
+              bin.install "goflow"
+              prefix.install_metafiles
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/goflow version")
+            end
+          end
+          EOF
+
+          cat > goflow.json <<EOF
+          {
+            "version": "${VERSION}",
+            "description": "AI workflow orchestration engine for multi-agent LLM pipelines",
+            "homepage": "${SERVER_URL}/${REPOSITORY}",
+            "architecture": {
+              "64bit": {
+                "url": "${base_url}/${windows_amd64_asset}",
+                "hash": "$(sha_for "$windows_amd64_asset")"
+              },
+              "arm64": {
+                "url": "${base_url}/${windows_arm64_asset}",
+                "hash": "$(sha_for "$windows_arm64_asset")"
+              }
+            },
+            "bin": "goflow.exe",
+            "checkver": "github",
+            "autoupdate": {
+              "architecture": {
+                "64bit": {
+                  "url": "${SERVER_URL}/${REPOSITORY}/releases/download/v$version/goflow_$version_windows_amd64.zip"
+                },
+                "arm64": {
+                  "url": "${SERVER_URL}/${REPOSITORY}/releases/download/v$version/goflow_$version_windows_arm64.zip"
+                }
+              }
+            }
+          }
+          EOF
 
       - name: Prepare release notes header
         shell: bash
@@ -212,6 +312,7 @@ jobs:
             echo "- Version: ${{ needs.prepare.outputs.tag }}"
             echo "- Commit: ${{ github.sha }}"
             echo "- Platforms: linux amd64/arm64, macOS amd64/arm64, windows amd64/arm64"
+            echo "- Includes: binary archives, checksums, Homebrew formula, Scoop manifest"
             echo
             if [[ -n "$RELEASE_NOTES" ]]; then
               echo "## Operator notes"
@@ -234,3 +335,84 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             dist/*
+
+      - name: Resolve package publishing configuration
+        id: package_config
+        shell: bash
+        env:
+          REQUEST_HOMEBREW: ${{ inputs.publish_homebrew }}
+          REQUEST_SCOOP: ${{ inputs.publish_scoop }}
+          HOMEBREW_TAP_REPOSITORY: ${{ vars.HOMEBREW_TAP_REPOSITORY }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          SCOOP_BUCKET_REPOSITORY: ${{ vars.SCOOP_BUCKET_REPOSITORY }}
+          SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          homebrew_ready=false
+          scoop_ready=false
+
+          if [[ "$REQUEST_HOMEBREW" == "true" ]]; then
+            if [[ -z "$HOMEBREW_TAP_REPOSITORY" || -z "$HOMEBREW_TAP_TOKEN" ]]; then
+              echo "Homebrew publishing requested but HOMEBREW_TAP_REPOSITORY or HOMEBREW_TAP_TOKEN is not configured" >&2
+              exit 1
+            fi
+            homebrew_ready=true
+          fi
+
+          if [[ "$REQUEST_SCOOP" == "true" ]]; then
+            if [[ -z "$SCOOP_BUCKET_REPOSITORY" || -z "$SCOOP_BUCKET_TOKEN" ]]; then
+              echo "Scoop publishing requested but SCOOP_BUCKET_REPOSITORY or SCOOP_BUCKET_TOKEN is not configured" >&2
+              exit 1
+            fi
+            scoop_ready=true
+          fi
+
+          echo "homebrew_ready=$homebrew_ready" >> "$GITHUB_OUTPUT"
+          echo "scoop_ready=$scoop_ready" >> "$GITHUB_OUTPUT"
+
+      - name: Check out Homebrew tap
+        if: steps.package_config.outputs.homebrew_ready == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.HOMEBREW_TAP_REPOSITORY }}
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Publish Homebrew formula
+        if: steps.package_config.outputs.homebrew_ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p homebrew-tap/Formula
+          cp dist/goflow.rb homebrew-tap/Formula/goflow.rb
+          cd homebrew-tap
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add Formula/goflow.rb
+          git diff --cached --quiet && exit 0
+          git commit -m "goflow ${{ needs.prepare.outputs.tag }}"
+          git push
+
+      - name: Check out Scoop bucket
+        if: steps.package_config.outputs.scoop_ready == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.SCOOP_BUCKET_REPOSITORY }}
+          token: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+          path: scoop-bucket
+
+      - name: Publish Scoop manifest
+        if: steps.package_config.outputs.scoop_ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p scoop-bucket/bucket
+          cp dist/goflow.json scoop-bucket/bucket/goflow.json
+          cd scoop-bucket
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add bucket/goflow.json
+          git diff --cached --quiet && exit 0
+          git commit -m "goflow ${{ needs.prepare.outputs.tag }}"
+          git push
