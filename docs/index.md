@@ -6,6 +6,32 @@ goflow is a command-line tool that coordinates multi-step AI agent pipelines. In
 
 ---
 
+## :gear: Powered by GitHub Copilot CLI
+
+goflow is built on top of **GitHub Copilot CLI** — the standalone command-line agent from GitHub. Every workflow step is executed as a Copilot CLI session, which means goflow inherits the full Copilot ecosystem:
+
+| Primitive | What It Is | How goflow Uses It |
+|-----------|------------|-------------------|
+| **Agent Files** (`.agent.md`) | Markdown files with YAML frontmatter that define an agent's persona, tools, and model | Each workflow step references an agent — either from a file or defined inline |
+| **Skills** (`SKILL.md`) | Folders of instructions, scripts, and resources that teach Copilot specialized tasks | Attached at the workflow or step level via the `skills` field |
+| **MCP Servers** | External tool servers using the Model Context Protocol | Declared per agent in `.agent.md` frontmatter |
+| **Hooks** (`.github/hooks/*.json`) | Shell commands executed at key points during agent execution (pre/post tool use, session start/end) | Copilot CLI loads hooks automatically from the repository |
+| **Custom Instructions** | `.instructions.md` and `copilot-instructions.md` files | Automatically included in prompts by Copilot CLI |
+| **Model Selection** | `--model` flag to choose from available models | Configurable per workflow, agent, or step |
+
+!!! info "Copilot CLI Required for Real Execution"
+    goflow requires [GitHub Copilot CLI](https://docs.github.com/en/copilot/concepts/agents/copilot-cli/about-copilot-cli) installed locally (`copilot` on PATH) for real AI calls. Use `--mock` mode for testing without it.
+
+### Supported Operating Systems
+
+| OS | Support |
+|----|---------|
+| **macOS** | Intel and Apple Silicon |
+| **Linux** | x64 and ARM64 |
+| **Windows** | Via PowerShell and [WSL](https://learn.microsoft.com/en-us/windows/wsl/about) |
+
+---
+
 ## :thinking: What Problem Does goflow Solve?
 
 Imagine you want to review code with multiple specialized AI agents:

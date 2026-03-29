@@ -11,8 +11,11 @@ Before installing goflow, make sure you have:
 | Requirement | Why You Need It | How to Check |
 |-------------|-----------------|--------------|
 | **Go 1.21+** | goflow is written in Go | `go version` |
-| **macOS, Linux, or WSL** | Supported operating systems | — |
+| **macOS, Linux, or Windows** | Supported operating systems | — |
 | **Copilot CLI** (optional) | Required for real AI calls, not needed for `--mock` mode | `which copilot` |
+
+!!! tip "Windows Support"
+    goflow and Copilot CLI run on Windows via **PowerShell** and **[WSL](https://learn.microsoft.com/en-us/windows/wsl/about)**. All workflow features work on Windows — hooks support both `bash` and `powershell` script paths.
 
 !!! tip "Don't have Copilot CLI?"
     You can still learn and test goflow using `--mock` mode, which simulates AI responses without making real API calls.

@@ -106,6 +106,9 @@ nav:
       - Workflow Schema: reference/workflow-schema.md
       - Settings And Options: reference/settings-and-options.md
       - Agent File Format: reference/agent-format.md
+      - Agent Skills: reference/skills.md
+      - Hooks: reference/hooks.md
+      - Model Selection & BYOK: reference/model-selection.md
       - CLI Commands: reference/cli.md
       - Template Variables: reference/templates.md
       - Shared Memory: reference/shared-memory.md
