@@ -595,7 +595,7 @@ The **frontmatter** (between `---` delimiters) contains structured metadata. The
 |---|---|---|
 | `name` | string | Agent name. Defaults to the filename stem if omitted. |
 | `description` | string | Human-readable description |
-| `tools` | []string | Tools the agent can use (e.g., `grep`, `glob`, `view`, `bash`) |
+| `tools` | []string | Copilot CLI tool names the agent can use (e.g., `grep`, `glob`, `view`, `bash`). Both YAML block and flow formats are valid: `tools: ['grep', 'view']` or as a list. |
 | `model` | string or []string | LLM model name(s). First in list is preferred. |
 | `agents` | []string | Subagents this agent can delegate to |
 | `mcp-servers` | object | MCP server configurations per agent |
@@ -668,14 +668,26 @@ Workflow Runner searches for agent files in multiple locations, with a defined p
 
 Files must have the `.agent.md` or `.md` extension. Directories that don't exist are silently skipped.
 
+### Tool Naming Conventions
+
+Tool names differ across platforms that use the `.agent.md` format:
+
+| Platform | Naming Style | Example |
+|---|---|---|
+| **Copilot CLI** (used by workflow-runner) | lowercase | `grep`, `view`, `bash` |
+| **VS Code** | `category/toolName` or set name | `search/textSearch`, `read/readFile`, or `search` |
+| **Claude Code** | PascalCase | `Read`, `Grep`, `Bash` |
+
+When authoring agent files for workflow-runner, use **Copilot CLI tool names** — these are the names passed to the CLI's `--available-tools` flag.
+
 ### Claude-Format Compatibility
 
 Agent files found under `.claude/agents/` are automatically normalized:
 
 - Comma-separated tool strings (e.g., `"Read, Grep, Bash"`) are split into arrays.
-- Tool names are mapped to VS Code equivalents:
+- Tool names are mapped to Copilot CLI equivalents:
 
-| Claude Name | VS Code Name |
+| Claude Name | Copilot CLI Name |
 |---|---|
 | `Read` | `view` |
 | `Grep` | `grep` |
@@ -685,7 +697,7 @@ Agent files found under `.claude/agents/` are automatically normalized:
 | `Edit` | `replace_string_in_file` |
 | `MultiEdit` | `multi_replace_string_in_file` |
 
-Unknown tool names are kept as-is.
+Unknown tool names (e.g., `WebFetch`, `Agent`, `WebSearch`) are kept as-is and passed through to the CLI without transformation.
 
 ---
 

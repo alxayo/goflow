@@ -470,9 +470,9 @@ config:
 Agent files found under `.claude/agents/` are automatically normalized:
 
 - Comma-separated tool strings (e.g., `"Read, Grep, Bash"`) are split into arrays.
-- Tool names are mapped to their VS Code equivalents:
+- Tool names are mapped to their Copilot CLI equivalents:
 
-| Claude Name | VS Code Name |
+| Claude Name | Copilot CLI Name |
 |---|---|
 | `Read` | `view` |
 | `Grep` | `grep` |
@@ -482,7 +482,9 @@ Agent files found under `.claude/agents/` are automatically normalized:
 | `Edit` | `replace_string_in_file` |
 | `MultiEdit` | `multi_replace_string_in_file` |
 
-Unknown tool names are kept as-is.
+Unknown tool names (e.g., `WebFetch`, `Agent`, `WebSearch`) are kept as-is and passed through to the CLI without transformation.
+
+> **Note — Tool naming conventions differ across platforms.** Copilot CLI uses lowercase names (`grep`, `view`, `bash`), VS Code uses `category/toolName` identifiers (`search/textSearch`, `read/readFile`), and Claude Code uses PascalCase (`Read`, `Grep`, `Bash`). When writing agent files for workflow-runner, use Copilot CLI names.
 
 ---
 
@@ -1006,17 +1008,21 @@ Each agent can be restricted to a specific set of tools. This is defined in the 
 
 ### Available Built-In Tools
 
+These are the Copilot CLI tool names accepted in agent `tools` fields:
+
 | Tool | Purpose |
 |---|---|
-| `grep` / `grep_search` | Text search in files |
-| `view` / `read_file` | Read file contents |
-| `edit` / `replace_string_in_file` | Edit existing files |
+| `grep` | Text search in files (regex and literal) |
+| `view` | Read file contents |
+| `edit` | Edit existing files |
 | `create_file` | Create new files |
+| `glob` | Glob-based file discovery |
 | `list_dir` | List directory contents |
-| `file_search` | Glob-based file search |
 | `semantic_search` | Semantic code search |
-| `run_in_terminal` / `bash` | Execute shell commands |
+| `bash` | Execute shell commands |
 | `fetch_webpage` | Fetch external web content |
+
+> **Tip:** Both YAML formats are valid for the `tools` field: `tools: ['grep', 'view']` (flow) or as a block list.
 
 ### Restricting Tools
 
@@ -1052,7 +1058,7 @@ agents:
 | Profile | Tools | Use Case |
 |---|---|---|
 | Read-only reviewer | `grep`, `view`, `semantic_search` | Code analysis, security scanning |
-| Web-enabled scanner | `fetch_webpage` | Fetching external content |
+| Web-enabled scanner | `fetch_webpage`, `view` | Fetching external content |
 | Full access | *(omit `tools`)* | Complex multi-step tasks that need file editing |
 | File editor | `view`, `edit`, `create_file`, `bash` | Code generation, refactoring |
 
