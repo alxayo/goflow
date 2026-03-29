@@ -14,17 +14,15 @@ import (
 	"github.com/alex-workflow-runner/workflow-runner/pkg/workflow"
 )
 
-// TestRun_InteractiveStep verifies that the orchestrator correctly resolves
-// the interactive flag for each step and passes it to the executor.
+// TestRun_InteractiveStep verifies that the CLI --interactive flag alone does NOT
+// make steps interactive when they have no explicit interactive setting.
+// The flag only enables the mechanism (wires the handler); per-step opt-in is required.
 func TestRun_InteractiveStep(t *testing.T) {
-	// Track which steps had interactive=true when the mock was called.
-	// We use the LastConfig on the mock to check the most recent session.
 	mock := &executor.MockSessionExecutor{
 		DefaultResponse: "output",
 	}
 	se := &executor.StepExecutor{SDK: mock}
 
-	handlerCalled := false
 	orch := &Orchestrator{
 		Executor: se,
 		Agents: map[string]*agents.Agent{
@@ -33,14 +31,13 @@ func TestRun_InteractiveStep(t *testing.T) {
 		Inputs:         map[string]string{},
 		CLIInteractive: true,
 		OnUserInput: func(q string, c []string) (string, error) {
-			handlerCalled = true
 			return "yes", nil
 		},
 	}
 
 	wf := &workflow.Workflow{
 		Steps: []workflow.Step{
-			makeStep("step-a", "bot", "Do work"),
+			makeStep("step-a", "bot", "Do work"), // no interactive field set
 		},
 	}
 
@@ -49,15 +46,11 @@ func TestRun_InteractiveStep(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Since CLIInteractive=true and step has no override, the executor
-	// should have been set to interactive.
-	if !se.Interactive {
-		t.Error("expected executor.Interactive=true for step with CLI flag")
+	// CLIInteractive=true but the step has no interactive override, so it should
+	// NOT be interactive. The CLI flag is a mechanism gate, not a global override.
+	if se.Interactive {
+		t.Error("expected executor.Interactive=false: CLI flag alone should not make unset steps interactive")
 	}
-	if se.OnUserInput == nil {
-		t.Error("expected executor.OnUserInput to be set")
-	}
-	_ = handlerCalled // handler is only called if mock simulates a question
 }
 
 // TestRun_StepOverridesWorkflowInteractive verifies that a step with

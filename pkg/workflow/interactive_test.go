@@ -1,7 +1,9 @@
 // interactive_test.go verifies the IsInteractive resolution logic that
-// determines whether a step should allow user input. The three-level
-// resolution (step → workflow config → CLI flag) is the core of the
-// interactive feature's opt-in design.
+// determines whether a step should allow user input.
+//
+// Resolution priority (highest to lowest): step.Interactive > config.interactive.
+// The CLI --interactive flag is a mechanism gate (wires up the handler) but does
+// NOT change the default for steps that have not explicitly opted in.
 package workflow
 
 import "testing"
@@ -22,13 +24,14 @@ func TestIsInteractive(t *testing.T) {
 			cliInteractive: false,
 			want:           false,
 		},
-		// CLI flag alone enables interactivity for unset steps.
+		// CLI flag alone does NOT enable interactivity for unset steps.
+		// The flag only wires up the handler; steps must opt in explicitly.
 		{
-			name:           "CLI flag enables",
+			name:           "CLI flag alone does not enable unset step",
 			stepValue:      nil,
 			wfInteractive:  false,
 			cliInteractive: true,
-			want:           true,
+			want:           false,
 		},
 		// Workflow config alone enables interactivity for unset steps.
 		{
@@ -38,9 +41,9 @@ func TestIsInteractive(t *testing.T) {
 			cliInteractive: false,
 			want:           true,
 		},
-		// Both CLI and workflow config enable — still true.
+		// CLI + workflow config: workflow config drives the unset step, CLI is irrelevant here.
 		{
-			name:           "both CLI and workflow enable",
+			name:           "workflow config enables even with CLI flag",
 			stepValue:      nil,
 			wfInteractive:  true,
 			cliInteractive: true,

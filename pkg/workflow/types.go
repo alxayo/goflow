@@ -148,19 +148,25 @@ type StepResult struct {
 // The resolution priority (highest to lowest) is:
 //  1. Step-level Interactive field (explicit per-step override)
 //  2. Workflow-level config.interactive setting
-//  3. CLI-level --interactive flag
 //
-// If the step has an explicit Interactive value (non-nil), it takes precedence.
-// Otherwise, user input is enabled if either the workflow config or CLI flag
-// enables it. This allows users to opt in globally while opting out specific
-// steps, or vice versa.
+// The CLI --interactive flag acts as a mechanism gate: it ensures the user-input
+// handler is wired up so that interactive steps can actually prompt the user.
+// It does NOT make all unset steps interactive — only config.interactive: true
+// in the workflow does that. This means a step without an explicit interactive
+// setting runs non-interactively unless the workflow itself opts all steps in.
+//
+// To make a specific step interactive regardless of global settings, set
+// interactive: true on the step. To exclude a step even when the workflow
+// sets config.interactive: true, set interactive: false on the step.
 func IsInteractive(step Step, wfInteractive, cliInteractive bool) bool {
 	// Step-level override takes highest precedence when explicitly set.
 	if step.Interactive != nil {
 		return *step.Interactive
 	}
-	// Fall back to workflow config or CLI flag — either one enables it.
-	return wfInteractive || cliInteractive
+	// Fall back to workflow-level config only.
+	// The CLI flag is not used here; it only controls whether the handler
+	// is wired up (see main.go), not the per-step default.
+	return wfInteractive
 }
 
 // BoolPtr returns a pointer to the given bool value.
