@@ -7,6 +7,19 @@
   --md-accent-fg-color: #ffab00;
 }
 
+/* Larger, easier-to-read baseline typography */
+.md-typeset {
+  font-size: 1.05rem;
+  line-height: 1.75;
+}
+
+.md-typeset p,
+.md-typeset li,
+.md-typeset td,
+.md-typeset th {
+  font-size: 1.05rem;
+}
+
 /* Hero section styling for home page */
 .md-content__inner h1:first-of-type {
   font-size: 2.8rem;
@@ -134,15 +147,27 @@ code {
   border-radius: 8px;
 }
 
-/* Content max-width for readability */
+/* Use full available width */
+.md-grid,
+.md-main__inner,
+.md-content,
 .md-content__inner {
-  max-width: 52rem;
+  max-width: none;
 }
 
 /* Responsive improvements */
 @media screen and (min-width: 76.25em) {
   .md-sidebar--primary {
-    width: 14rem;
+    width: 18rem;
+  }
+
+  /* Keep a single navigation area on the left */
+  .md-sidebar--secondary {
+    display: none;
+  }
+
+  .md-content {
+    margin-right: 0;
   }
 }
 
