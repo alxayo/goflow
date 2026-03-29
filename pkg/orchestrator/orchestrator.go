@@ -62,13 +62,20 @@ func (o *Orchestrator) Run(ctx context.Context, wf *workflow.Workflow) (map[stri
 
 			result, err := o.Executor.Execute(ctx, step, agent, outputMap, o.Inputs, level.Depth)
 			if err != nil {
-				results[step.ID] = result
+				if result != nil {
+					results[step.ID] = result
+				}
 				return results, fmt.Errorf("step %q failed: %w", step.ID, err)
 			}
 
 			results[step.ID] = result
 			if result.Status == workflow.StepStatusCompleted {
 				outputMap[step.ID] = result.Output
+			} else if result.Status == workflow.StepStatusSkipped {
+				// Skipped steps get an empty output so downstream
+				// {{steps.X.output}} references resolve to "" rather
+				// than failing with "unknown step".
+				outputMap[step.ID] = ""
 			}
 		}
 	}

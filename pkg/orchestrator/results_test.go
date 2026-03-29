@@ -59,11 +59,14 @@ func TestOutputMapOnlyCompleted(t *testing.T) {
 	})
 
 	out := store.OutputMap()
-	if len(out) != 1 {
-		t.Fatalf("expected 1 entry in OutputMap, got %d", len(out))
+	if len(out) != 2 {
+		t.Fatalf("expected 2 entries in OutputMap (completed + skipped), got %d", len(out))
 	}
 	if out["completed"] != "result-c" {
 		t.Errorf("completed output = %q, want %q", out["completed"], "result-c")
+	}
+	if out["skipped"] != "" {
+		t.Errorf("skipped output = %q, want empty string", out["skipped"])
 	}
 }
 

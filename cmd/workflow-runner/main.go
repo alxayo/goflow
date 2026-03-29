@@ -220,7 +220,7 @@ func run() int {
 	// 12. Print step statuses in verbose mode.
 	if *verbose {
 		for _, step := range wf.Steps {
-			if r, ok := results[step.ID]; ok {
+			if r, ok := results[step.ID]; ok && r != nil {
 				fmt.Fprintf(os.Stderr, "Step %s: %s\n", step.ID, r.Status)
 			}
 		}
