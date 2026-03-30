@@ -60,11 +60,13 @@ output:
 
 - Local structure test: `--mock`
 - Real agent execution: default mode
-- Add `--verbose` for detailed step logs
+- Add `--verbose` for detailed step logs (tool calls, session lifecycle)
+- Add `--stream` to see LLM output as it generates
 
 ```bash
 ./goflow run --workflow my-workflow.yaml --mock --verbose
 ./goflow run --workflow my-workflow.yaml --verbose
+./goflow run --workflow my-workflow.yaml --stream
 ```
 
 ## Recommended authoring loop

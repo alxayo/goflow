@@ -57,3 +57,21 @@ func TestRunArgsUnknownCommand(t *testing.T) {
 		t.Fatalf("stderr = %q, want usage text", stderr.String())
 	}
 }
+
+func TestRunArgsHelpIncludesStreamFlag(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	code := runArgs([]string{"help"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("runArgs returned %d, want 0", code)
+	}
+
+	output := stdout.String()
+	if !strings.Contains(output, "--stream") {
+		t.Errorf("help output does not contain --stream flag")
+	}
+	if !strings.Contains(output, "Stream LLM output") {
+		t.Errorf("help output does not contain stream description")
+	}
+}

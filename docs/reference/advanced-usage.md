@@ -7,6 +7,18 @@ goflow builds a DAG and executes it level by level.
 - Steps in one level are dependency-safe to run together.
 - Parallel mode uses goroutines and wait groups.
 - Fan-in steps start only after all dependencies complete.
+- In fan-out levels, failures are handled with best effort: siblings continue and failed outputs resolve to empty strings for fan-in.
+- In single-step levels, failures are fail-fast.
+
+## Retry and timeout behavior
+
+Step-level retry is available through `retry_count`:
+
+- Total attempts are `retry_count + 1`.
+- Retries are limited to timeout-style transient failures.
+- Backoff is short and linear between attempts.
+
+The step-level `timeout` field is currently parsed but not yet enforced as a per-step execution deadline.
 
 ## Reliability patterns
 

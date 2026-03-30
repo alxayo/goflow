@@ -6,7 +6,16 @@ A step-by-step guide to building and running multi-agent AI workflows, from your
 
 This guide is tutorial-oriented. For the implementation-accurate reference to every currently supported setting and option, use [SETTINGS_REFERENCE.md](SETTINGS_REFERENCE.md).
 
-In particular, note that the current CLI path is still sequential, `config.max_concurrency` is not active in normal `goflow run`, and `output.truncate` plus shared-memory config are not yet fully wired into the main runtime.
+Key runtime facts:
+
+- **Event-based session monitoring**: Sessions complete naturally when the LLM finishes (via `session.idle` event). No timeout configuration is required for long-running operations.
+- **Streaming progress**: Use `--verbose` to see real-time progress (tool calls, agent delegations, session completion).
+- **Streaming LLM output**: Use `--stream` to see the LLM's response as it generates, token by token.
+- `goflow run` uses parallel DAG-level execution with `config.max_concurrency` limiting concurrent steps.
+- Fan-out step failures are handled in best-effort mode (sibling steps continue).
+- `retry_count` is active for transient timeout-style failures.
+- `timeout` is **optional** — use only as a safety limit for CI/CD or debugging.
+- `output.truncate` and shared-memory config are not yet fully wired into the main runtime.
 
 ---
 
@@ -97,7 +106,7 @@ This guide walks you through the system progressively:
 | Requirement | Notes |
 |---|---|
 | **Go 1.21+** | [Install Go](https://go.dev/doc/install) |
-| **Copilot CLI** | Must be on `$PATH` or at `~/.copilot/copilot`. Not needed for `--mock` mode. |
+| **Copilot CLI** | Must be on `$PATH` or at `~/.copilot/copilot`. Not needed for `--mock` mode. The Copilot SDK is compiled into the `goflow` binary — no separate SDK install required. |
 | **macOS, Linux, or WSL** | Copilot CLI availability may vary |
 
 ### Build from Source
@@ -114,7 +123,7 @@ This produces a `goflow` binary in the current directory. Verify it works:
 # Expected: usage output
 ```
 
-### Verify Copilot CLI (Optional for Real Runs)
+### Verify Copilot CLI (Required for Real Runs)
 
 ```bash
 which copilot
@@ -161,7 +170,7 @@ output:
 
 ### 3.2 Running the Workflow
 
-Run it with the Copilot CLI (real LLM):
+Run it with the Copilot SDK executor (real LLM):
 
 ```bash
 ./goflow run --workflow my-first-workflow.yaml --verbose
@@ -813,7 +822,7 @@ When a step executes, models are tried in this order:
 1. Step-level model       (highest priority)
 2. Agent-level model(s)   (in order, if a list)
 3. Workflow config.model  (lowest explicit priority)
-4. Copilot CLI default    (if all above are unavailable)
+4. Copilot CLI default    (SDK/CLI runtime fallback)
 ```
 
 **Example resolution:**

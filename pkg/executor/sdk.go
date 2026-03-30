@@ -67,4 +67,25 @@ type SessionConfig struct {
 	// true. If Interactive is true but OnUserInput is nil, user input
 	// requests will fail with an error.
 	OnUserInput UserInputHandler
+
+	// Provider holds BYOK configuration when using the SDK executor.
+	// Nil means "use GitHub Models" (default). The CopilotCLIExecutor
+	// ignores this field.
+	Provider *ProviderConfig
+
+	// Streaming enables real-time event streaming from the SDK session.
+	// When true, the session emits assistant.message_delta events as the
+	// LLM generates output, plus detailed tool execution events.
+	// This enables progress visibility and eliminates timeout requirements
+	// for long-running operations.
+	Streaming bool
+
+	// OnProgress is called for each significant session event when Streaming
+	// is enabled. Use this to display real-time output to the user or write
+	// events to an audit log.
+	OnProgress ProgressHandler
+
+	// StepID identifies the workflow step for event attribution.
+	// Used by the monitor to tag events with the originating step.
+	StepID string
 }

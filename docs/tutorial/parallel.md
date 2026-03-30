@@ -19,7 +19,7 @@ analyze
 Both `security-review` and `perf-review` depend only on `analyze` — they don't depend on each other. So why wait for one to finish before starting the other?
 
 !!! note "Current CLI behavior"
-  The codebase contains a parallel orchestrator implementation, but the current `goflow run` command still executes the sequential orchestrator path. DAG levels are built correctly, but normal CLI runs do not yet execute same-level steps concurrently.
+  `goflow run` executes DAG levels with parallel fan-out where dependencies allow. In levels with multiple sibling steps, failures are handled with best effort: sibling steps continue and failed step outputs resolve as empty strings for downstream fan-in templates.
 
 ---
 

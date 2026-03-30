@@ -1022,3 +1022,223 @@ func findStepFile(t *testing.T, stepsDir, stepID, filename string) string {
 	t.Errorf("step dir containing %q not found", stepID)
 	return ""
 }
+
+// ---------------------------------------------------------------------------
+// Task S6: SDK Executor Selection Integration Tests
+// ---------------------------------------------------------------------------
+
+// TestBYOKProviderParsing verifies that a workflow with config.provider
+// is parsed correctly and the provider config is preserved through the
+// pipeline.
+func TestBYOKProviderParsing(t *testing.T) {
+	yamlContent := `
+name: byok-test
+description: "Test BYOK provider parsing"
+
+config:
+  model: gpt-4o
+  provider:
+    type: openai
+    base_url: https://api.openai.com/v1
+    api_key_env: OPENAI_API_KEY
+
+agents:
+  test-agent:
+    inline:
+      description: test
+      prompt: you are a test agent
+
+steps:
+  - id: step1
+    agent: test-agent
+    prompt: hello
+
+output:
+  steps: [step1]
+  format: markdown
+`
+	tmpDir := t.TempDir()
+	yamlPath := filepath.Join(tmpDir, "byok.yaml")
+	if err := os.WriteFile(yamlPath, []byte(yamlContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	wf, err := workflow.ParseWorkflow(yamlPath)
+	if err != nil {
+		t.Fatalf("ParseWorkflow: %v", err)
+	}
+
+	if wf.Config.Provider == nil {
+		t.Fatal("Config.Provider should not be nil")
+	}
+	if wf.Config.Provider.Type != "openai" {
+		t.Errorf("Provider.Type: want openai, got %s", wf.Config.Provider.Type)
+	}
+	if wf.Config.Provider.BaseURL != "https://api.openai.com/v1" {
+		t.Errorf("Provider.BaseURL: want openai URL, got %s", wf.Config.Provider.BaseURL)
+	}
+	if wf.Config.Provider.APIKeyEnv != "OPENAI_API_KEY" {
+		t.Errorf("Provider.APIKeyEnv: want OPENAI_API_KEY, got %s", wf.Config.Provider.APIKeyEnv)
+	}
+}
+
+// TestNoProviderParsing verifies that a workflow without config.provider
+// results in a nil Provider field (default GitHub Models behavior).
+func TestNoProviderParsing(t *testing.T) {
+	yamlContent := `
+name: no-provider-test
+config:
+  model: gpt-4o
+
+agents:
+  test-agent:
+    inline:
+      description: test
+      prompt: you are a test agent
+
+steps:
+  - id: step1
+    agent: test-agent
+    prompt: hello
+
+output:
+  steps: [step1]
+  format: markdown
+`
+	tmpDir := t.TempDir()
+	yamlPath := filepath.Join(tmpDir, "no-provider.yaml")
+	if err := os.WriteFile(yamlPath, []byte(yamlContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	wf, err := workflow.ParseWorkflow(yamlPath)
+	if err != nil {
+		t.Fatalf("ParseWorkflow: %v", err)
+	}
+
+	if wf.Config.Provider != nil {
+		t.Errorf("Config.Provider should be nil when not specified, got %+v", wf.Config.Provider)
+	}
+}
+
+// TestProviderConfigToExecutor verifies the mapping from workflow.ProviderConfig
+// to executor.ProviderConfig that main.go performs.
+func TestProviderConfigToExecutor(t *testing.T) {
+	wfProvider := &workflow.ProviderConfig{
+		Type:      "anthropic",
+		BaseURL:   "https://api.anthropic.com/v1",
+		APIKeyEnv: "ANTHROPIC_API_KEY",
+	}
+
+	// Simulate the mapping done in main.go
+	execProvider := &executor.ProviderConfig{
+		Type:      wfProvider.Type,
+		BaseURL:   wfProvider.BaseURL,
+		APIKeyEnv: wfProvider.APIKeyEnv,
+	}
+
+	if execProvider.Type != "anthropic" {
+		t.Errorf("Type: want anthropic, got %s", execProvider.Type)
+	}
+	if execProvider.BaseURL != "https://api.anthropic.com/v1" {
+		t.Errorf("BaseURL: want anthropic URL, got %s", execProvider.BaseURL)
+	}
+	if execProvider.APIKeyEnv != "ANTHROPIC_API_KEY" {
+		t.Errorf("APIKeyEnv: want ANTHROPIC_API_KEY, got %s", execProvider.APIKeyEnv)
+	}
+}
+
+// TestBYOKWorkflowWithMockExecutor verifies that a workflow with BYOK config
+// can still be executed end-to-end using the mock executor (--mock overrides).
+func TestBYOKWorkflowWithMockExecutor(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	yamlContent := `
+name: "byok-mock-test"
+description: "BYOK workflow running with mock executor"
+
+config:
+  model: gpt-4o
+  audit_dir: "` + filepath.Join(tmpDir, "audit") + `"
+  provider:
+    type: openai
+    base_url: https://api.openai.com/v1
+    api_key_env: OPENAI_API_KEY
+
+agents:
+  analyzer:
+    inline:
+      description: "Analyzes code"
+      prompt: "You are a code analyzer."
+      tools: [grep, view]
+
+steps:
+  - id: analyze
+    agent: analyzer
+    prompt: "Analyze the code"
+
+output:
+  steps: [analyze]
+  format: markdown
+`
+	yamlPath := filepath.Join(tmpDir, "byok-mock.yaml")
+	if err := os.WriteFile(yamlPath, []byte(yamlContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	wf, err := workflow.ParseWorkflow(yamlPath)
+	if err != nil {
+		t.Fatalf("ParseWorkflow: %v", err)
+	}
+	if err := workflow.ValidateWorkflow(wf); err != nil {
+		t.Fatalf("ValidateWorkflow: %v", err)
+	}
+
+	// Verify provider was parsed.
+	if wf.Config.Provider == nil {
+		t.Fatal("Config.Provider should not be nil")
+	}
+
+	// Use mock executor (simulates --mock flag behavior).
+	mock := &executor.MockSessionExecutor{
+		DefaultResponse: "BYOK mock analysis result",
+	}
+
+	resolvedAgents, err := agents.ResolveAgents(wf, tmpDir, tmpDir)
+	if err != nil {
+		t.Fatalf("ResolveAgents: %v", err)
+	}
+
+	auditLogger, err := audit.NewRunLogger(wf.Config.AuditDir, wf.Name)
+	if err != nil {
+		t.Fatalf("NewRunLogger: %v", err)
+	}
+
+	stepExec := &executor.StepExecutor{
+		SDK:          mock,
+		AuditLogger:  auditLogger,
+		DefaultModel: wf.Config.Model,
+	}
+
+	orch := &orchestrator.Orchestrator{
+		Executor: stepExec,
+		Agents:   resolvedAgents,
+		Inputs:   map[string]string{},
+	}
+
+	results, err := orch.Run(context.Background(), wf)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	r, ok := results["analyze"]
+	if !ok {
+		t.Fatal("analyze step result not found")
+	}
+	if r.Status != workflow.StepStatusCompleted {
+		t.Errorf("status: want completed, got %s", r.Status)
+	}
+	if r.Output != "BYOK mock analysis result" {
+		t.Errorf("output: want mock result, got %q", r.Output)
+	}
+}

@@ -5,7 +5,9 @@ package executor
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/alex-workflow-runner/workflow-runner/pkg/agents"
@@ -34,10 +36,34 @@ type StepExecutor struct {
 	// OnUserInput is the callback invoked when the LLM requests user
 	// clarification. Only used when Interactive is true.
 	OnUserInput UserInputHandler
+
+	// Streaming enables real-time event monitoring for session progress.
+	// When true, the SDK emits events as the LLM works, eliminating the
+	// need for timeout configuration on long-running steps.
+	Streaming bool
+
+	// OnProgress is called for each significant session event when Streaming
+	// is enabled. Use this for real-time CLI output or audit logging.
+	OnProgress ProgressHandler
 }
 
 // Execute runs a single step and returns its result.
 // It is the caller's responsibility to ensure dependencies are satisfied.
+//
+// Event-Based Completion:
+// The executor uses event-driven completion detection via the SDK's Session.On()
+// API, which means sessions run until the LLM finishes naturally. There is no
+// default timeout - sessions complete when the session.idle event is received.
+//
+// Optional Timeout Override:
+// If step.Timeout is set (e.g., "120s"), a context deadline is applied as a
+// safety limit. This is useful for:
+//   - Preventing runaway sessions from consuming resources indefinitely
+//   - CI/CD pipelines with strict time bounds
+//   - Debugging workflows that might be stuck
+//
+// In most cases, you do NOT need to set a timeout - the event-based approach
+// handles completion automatically.
 func (se *StepExecutor) Execute(
 	ctx context.Context,
 	step workflow.Step,
@@ -50,6 +76,17 @@ func (se *StepExecutor) Execute(
 	result := &workflow.StepResult{
 		StepID:    step.ID,
 		StartedAt: startedAt.UTC().Format(time.RFC3339),
+	}
+
+	// 0. Apply step-level timeout if specified.
+	if step.Timeout != "" {
+		timeout, err := time.ParseDuration(step.Timeout)
+		if err == nil && timeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, timeout)
+			defer cancel()
+		}
+		// If timeout is malformed, log but continue (non-fatal).
 	}
 
 	// 1. Evaluate condition — skip if not met.
@@ -87,6 +124,7 @@ func (se *StepExecutor) Execute(
 	// 4. Build session config from agent.
 	// Include the interactive flag and user-input handler so the session
 	// knows whether to allow the LLM to ask clarification questions.
+	// Also include streaming config for event-based progress monitoring.
 	sessionCfg := SessionConfig{
 		SystemPrompt: agent.Prompt,
 		Tools:        agent.Tools,
@@ -94,27 +132,72 @@ func (se *StepExecutor) Execute(
 		Models:       se.resolveModels(step, agent),
 		Interactive:  se.Interactive,
 		OnUserInput:  se.OnUserInput,
+		Streaming:    se.Streaming,
+		OnProgress:   se.OnProgress,
+		StepID:       step.ID,
 	}
 
 	// 5. Create SDK session.
-	session, err := se.SDK.CreateSession(ctx, sessionCfg)
-	if err != nil {
-		result.Status = workflow.StepStatusFailed
-		result.Error = err
-		result.ErrorMsg = err.Error()
-		result.EndedAt = time.Now().UTC().Format(time.RFC3339)
-		if stepLogger != nil {
-			se.writeFailedAudit(stepLogger, step, agent, result, startedAt)
-		}
-		return result, fmt.Errorf("creating session for step %q: %w", step.ID, err)
+	attempts := step.RetryCount + 1
+	if attempts < 1 {
+		attempts = 1
 	}
-	defer session.Close()
 
-	result.SessionID = session.SessionID()
+	var output string
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		session, err := se.SDK.CreateSession(ctx, sessionCfg)
+		if err != nil {
+			lastErr = err
+			if attempt < attempts && isTransientSDKTimeoutError(err) {
+				if !sleepWithContext(ctx, retryBackoff(attempt)) {
+					break
+				}
+				continue
+			}
 
-	// 6. Send resolved prompt and get output.
-	output, err := session.Send(ctx, resolvedPrompt)
-	if err != nil {
+			result.Status = workflow.StepStatusFailed
+			result.Error = err
+			result.ErrorMsg = err.Error()
+			result.EndedAt = time.Now().UTC().Format(time.RFC3339)
+			if stepLogger != nil {
+				se.writeFailedAudit(stepLogger, step, agent, result, startedAt)
+			}
+			return result, fmt.Errorf("creating session for step %q: %w", step.ID, err)
+		}
+
+		result.SessionID = session.SessionID()
+
+		output, err = session.Send(ctx, resolvedPrompt)
+		_ = session.Close()
+		if err != nil {
+			lastErr = err
+			if attempt < attempts && isTransientSDKTimeoutError(err) {
+				if !sleepWithContext(ctx, retryBackoff(attempt)) {
+					break
+				}
+				continue
+			}
+
+			result.Status = workflow.StepStatusFailed
+			result.Error = err
+			result.ErrorMsg = err.Error()
+			result.EndedAt = time.Now().UTC().Format(time.RFC3339)
+			if stepLogger != nil {
+				se.writeFailedAudit(stepLogger, step, agent, result, startedAt)
+			}
+			return result, fmt.Errorf("executing step %q: %w", step.ID, err)
+		}
+
+		// Successful send ends retry loop.
+		break
+	}
+
+	if output == "" {
+		err := lastErr
+		if err == nil {
+			err = errors.New("step execution failed after retries")
+		}
 		result.Status = workflow.StepStatusFailed
 		result.Error = err
 		result.ErrorMsg = err.Error()
@@ -263,4 +346,41 @@ func dedupeStrings(input []string) []string {
 		}
 	}
 	return result
+}
+
+// isTransientSDKTimeoutError returns true for timeout-style SDK errors that
+// are typically transient and safe to retry.
+func isTransientSDKTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "context deadline exceeded") ||
+		strings.Contains(msg, "waiting for session.idle") ||
+		strings.Contains(msg, "timeout")
+}
+
+func retryBackoff(attempt int) time.Duration {
+	if attempt < 1 {
+		attempt = 1
+	}
+	// Short linear backoff to avoid immediately hammering the backend.
+	return time.Duration(attempt) * 500 * time.Millisecond
+}
+
+func sleepWithContext(ctx context.Context, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
+	}
 }

@@ -6,12 +6,15 @@ A comprehensive guide to understanding, configuring, and building workflows with
 
 This document mixes current behavior with broader design intent. For the implementation-accurate, source-code-based reference to every setting and option, use [SETTINGS_REFERENCE.md](SETTINGS_REFERENCE.md).
 
-The most important current runtime caveats are:
+The most important current runtime facts are:
 
-1. `goflow run` currently executes the sequential orchestrator path.
-2. `config.max_concurrency` is implemented in `RunParallel()` but does not affect the normal CLI path today.
-3. `output.truncate` is parsed and helper code exists, but automatic truncation is not currently applied during template injection or final reporting.
-4. Shared-memory helpers exist in the codebase, but the main CLI path does not yet wire them in automatically.
+1. `goflow run` executes the parallel orchestrator path (`RunParallel()`) and processes DAG levels in dependency order.
+2. `config.max_concurrency` is active in normal CLI runs and limits concurrent steps inside a DAG level (`0` means unlimited).
+3. **Event-based session monitoring**: Sessions complete naturally when the LLM finishes (via `session.idle` event). No timeout configuration is required.
+4. **Streaming progress**: Use `--verbose` to see real-time tool calls, agent delegations, and session completion.
+5. `timeout` is **optional** — use it only as a safety limit for CI/CD or debugging, not as a requirement for long-running tasks.
+6. `output.truncate` is parsed and helper code exists, but automatic truncation is not currently applied during template injection or final reporting.
+7. Shared-memory helpers exist in the codebase, but the main CLI path does not yet wire them in automatically.
 
 ---
 
@@ -426,8 +429,8 @@ steps:
       contains: "APPROVE"
     skills: []                        # Optional. Skills attached to this step.
     on_error: ""                      # Optional. Error handling strategy.
-    retry_count: 0                    # Optional. Number of retries on failure.
-    timeout: ""                       # Optional. Step timeout duration.
+    retry_count: 0                    # Optional. Retries for timeout-style transient failures.
+    timeout: ""                       # Optional. Parsed timeout value (not yet enforced).
     interactive: true                 # Optional. Override interactive mode for this step.
 ```
 
@@ -440,8 +443,8 @@ steps:
 | `condition` | object | No | Execute only if the condition evaluates to true. See [§8](#8-conditions--conditional-step-execution). |
 | `skills` | []string | No | Skills attached to this step. |
 | `on_error` | string | No | Error handling strategy (reserved for future use). |
-| `retry_count` | int | No | Number of retries on failure (reserved for future use). |
-| `timeout` | string | No | Step timeout (reserved for future use). |
+| `retry_count` | int | No | Number of retries for timeout-style transient failures. Total attempts = `retry_count + 1`. |
+| `timeout` | string | No | Parsed but not currently enforced as a per-step deadline. |
 | `interactive` | bool (pointer) | No | Override interactive mode for this step. `true` forces interactive, `false` forces non-interactive, omitted inherits from config/CLI. See [§12](#12-interactive-mode--clarification-questions). |
 
 **Validation rules:**

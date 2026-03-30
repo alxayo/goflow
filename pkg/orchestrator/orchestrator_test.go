@@ -558,9 +558,15 @@ func TestParallelMaxConcurrency1(t *testing.T) {
 }
 
 func TestParallelStepFailure(t *testing.T) {
-	// A → {B, C}: C fails → error returned, B's result still in map.
+	// A → {B, C}: C fails but RunParallel continues in best-effort mode.
+	// D fans in from B and C and should still run with C's output as empty.
 	mock := &executor.MockSessionExecutor{
-		DefaultResponse: "ok",
+		Responses: map[string]string{
+			"start":              "seed-output",
+			"succeed-b":          "output-from-b",
+			"fan-in":             "aggregated-output",
+			"B=output-from-b|C=": "aggregated-output",
+		},
 		SendErrForStep: map[string]error{
 			"fail-c": fmt.Errorf("LLM timeout on C"),
 		},
@@ -571,16 +577,14 @@ func TestParallelStepFailure(t *testing.T) {
 			makeStep("A", "bot", "start"),
 			makeStep("B", "bot", "succeed-b", "A"),
 			makeStep("C", "bot", "fail-c", "A"),
+			makeStep("D", "bot", "fan-in B={{steps.B.output}}|C={{steps.C.output}}", "B", "C"),
 		},
 	}
 
 	orch := newOrchestrator(mock, agentMap, nil)
 	results, err := orch.RunParallel(context.Background(), wf)
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !contains(err.Error(), `step "C"`) {
-		t.Errorf("error should mention step C: %v", err)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 	// A should have completed before the fan-out level.
 	if r, ok := results["A"]; !ok || r.Status != workflow.StepStatusCompleted {
@@ -589,6 +593,10 @@ func TestParallelStepFailure(t *testing.T) {
 	// C should be failed in results.
 	if r, ok := results["C"]; !ok || r.Status != workflow.StepStatusFailed {
 		t.Errorf("step C should be failed in results, got %v", results["C"])
+	}
+	// D should still complete using best-effort fan-in context.
+	if r, ok := results["D"]; !ok || r.Status != workflow.StepStatusCompleted {
+		t.Errorf("step D should be completed in best-effort mode, got %v", results["D"])
 	}
 }
 
@@ -604,5 +612,30 @@ func TestParallelEmptyWorkflow(t *testing.T) {
 	}
 	if len(results) != 0 {
 		t.Errorf("expected 0 results, got %d", len(results))
+	}
+}
+
+func TestParallelSingleStepFailureFailsWorkflow(t *testing.T) {
+	// Single-step level is sequential/critical and should fail fast.
+	mock := &executor.MockSessionExecutor{
+		SendErrForStep: map[string]error{
+			"fail-now": fmt.Errorf("critical failure"),
+		},
+	}
+	agentMap := map[string]*agents.Agent{"bot": makeAgent("bot")}
+	wf := &workflow.Workflow{
+		Steps: []workflow.Step{
+			makeStep("A", "bot", "fail-now"),
+			makeStep("B", "bot", "should-not-run", "A"),
+		},
+	}
+
+	orch := newOrchestrator(mock, agentMap, nil)
+	results, err := orch.RunParallel(context.Background(), wf)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if _, ok := results["B"]; ok {
+		t.Error("step B should not run after critical sequential failure")
 	}
 }
