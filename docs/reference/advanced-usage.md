@@ -70,6 +70,41 @@ Every run writes:
 
 Use run artifacts to debug regressions and compare behavior across versions.
 
+## Stream recording for debugging
+
+With `--streaming` enabled, each step records all LLM events to `stream.jsonl`:
+
+```bash
+# Run with streaming enabled
+goflow run --workflow review.yaml --streaming
+
+# Tail a step's stream in real-time
+tail -f .workflow-runs/.../steps/01_analyze/stream.jsonl
+```
+
+**Example stream.jsonl:**
+```jsonl
+{"ts":"2026-03-30T14:32:05.001Z","type":"assistant.turn_start"}
+{"ts":"2026-03-30T14:32:05.050Z","type":"assistant.message_delta","data":"I'll analyze"}
+{"ts":"2026-03-30T14:32:05.200Z","type":"tool.execution_start","data":{"tool":"grep"}}
+{"ts":"2026-03-30T14:32:06.500Z","type":"tool.execution_complete","data":{"tool":"grep","status":"completed"}}
+{"ts":"2026-03-30T14:32:07.100Z","type":"session.idle"}
+```
+
+This is useful for:
+
+- **Debugging stuck steps**: See what the LLM was doing before a timeout
+- **Interactive mode**: View accumulated context when LLM asks for user input
+- **TUI development**: Switch between parallel step streams in real-time
+- **Audit compliance**: Full transparency into LLM behavior
+
+For interactive workflows, user input events are also recorded:
+
+```jsonl
+{"ts":"...","type":"user.input_requested","data":{"prompt":"Continue?","choices":["yes","no"]}}
+{"ts":"...","type":"user.input_response","data":"yes"}
+```
+
 ## Performance tips
 
 - Scope file globs tightly to reduce unnecessary context.

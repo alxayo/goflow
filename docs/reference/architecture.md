@@ -330,9 +330,60 @@ func buildPrompt(originalPrompt string, memory *SharedMemory) string {
         ├── 00_step-a/
         │   ├── step.meta.json   # Step metadata
         │   ├── prompt.md        # Resolved prompt
-        │   └── output.md        # AI response
+        │   ├── output.md        # AI response (final)
+        │   └── stream.jsonl     # Real-time streaming log
         └── 01_step-b/
             └── ...
+```
+
+### Stream Recording (`stream.jsonl`)
+
+When streaming is enabled (`--streaming` flag), each step records all LLM events
+to `stream.jsonl` in JSON Lines format. This provides a complete audit trail of
+the LLM's "thought process" and enables several use cases:
+
+**Format:** One JSON object per line, appended in real-time.
+
+```jsonl
+{"ts":"2026-03-30T14:32:05.001Z","type":"assistant.turn_start"}
+{"ts":"2026-03-30T14:32:05.050Z","type":"assistant.message_delta","data":"I'll analyze"}
+{"ts":"2026-03-30T14:32:05.080Z","type":"assistant.message_delta","data":" the code"}
+{"ts":"2026-03-30T14:32:05.200Z","type":"tool.execution_start","data":{"tool":"grep","args":"{\"query\":\"password\"}"}}
+{"ts":"2026-03-30T14:32:06.500Z","type":"tool.execution_complete","data":{"tool":"grep","status":"completed"}}
+{"ts":"2026-03-30T14:32:07.000Z","type":"assistant.turn_end"}
+{"ts":"2026-03-30T14:32:07.100Z","type":"session.idle"}
+```
+
+**Event Types:**
+
+| Type | Description | Data |
+|------|-------------|------|
+| `assistant.turn_start` | LLM turn begins | — |
+| `assistant.turn_end` | LLM turn ends | — |
+| `assistant.message_delta` | Streaming text chunk | String (the text) |
+| `tool.execution_start` | Tool call begins | `{tool, args}` |
+| `tool.execution_complete` | Tool call ends | `{tool, status}` |
+| `session.idle` | Session completed | — |
+| `session.error` | Session error | Error message |
+| `user.input_requested` | LLM asks for input | `{prompt, choices}` |
+| `user.input_response` | User's response | String (the answer) |
+
+**Use Cases:**
+
+1. **Debugging** — See exactly what the LLM was doing before an error
+2. **TUI/CLI** — Display real-time streaming output or switch between step streams
+3. **Interactive mode** — Show accumulated context when LLM asks for user input
+4. **Audit compliance** — Full transparency into LLM behavior
+5. **Replay** — Reconstruct the LLM's decision-making process
+
+**Live Monitoring:**
+
+```bash
+# Tail a single step's stream
+tail -f .workflow-runs/.../steps/01_analyze/stream.jsonl
+
+# Watch all steps (in parallel execution)
+tail -f .workflow-runs/.../steps/*/stream.jsonl
 ```
 
 ### Metadata Files

@@ -432,7 +432,7 @@ are desired, use `depends_on` to chain agents explicitly in YAML. Or implement a
   3. Create a Copilot SDK session with the agent's config (system prompt, tools, model, MCP servers, hooks)
   4. Register audit logger as session event subscriber (`session.On()`)
   5. Register shared memory tools (`read_memory`, `write_memory`) if shared memory is enabled
-  6. Create step audit directory, begin writing `transcript.jsonl`
+  6. Create step audit directory, begin writing `stream.jsonl`
   7. Send the resolved prompt
   8. Wait for `session.idle` event
   9. Extract the final `assistant.message` content as step output
@@ -468,7 +468,7 @@ folder. This is critical for transparency and debugging.
     │   ├── 01_analyze/
     │   │   ├── step.meta.json     # Step metadata (agent, model, start/end, status, duration)
     │   │   ├── prompt.md          # The resolved prompt sent to the session
-    │   │   ├── transcript.jsonl   # Full session event log (every event, streaming deltas)
+    │   │   ├── stream.jsonl       # Full session event log (every event, streaming deltas)
     │   │   ├── output.md          # Final assistant.message content (the step's output)
     │   │   ├── tool_calls.jsonl   # All tool invocations with args and results
     │   │   └── errors.log         # Errors, if any
@@ -483,13 +483,13 @@ folder. This is critical for transparency and debugging.
 
 **Key design points:**
 
-- **Real-time writing:** Transcript and tool call files are appended in real-time
+- **Real-time writing:** Stream and tool call files are appended in real-time
   as events arrive (JSONL format — one JSON object per line). Users can `tail -f`
-  any transcript file to monitor a step live.
+  any stream file to monitor a step live.
 - **Sequence numbering:** Step folders are prefixed with a two-digit sequence
   number based on execution order. Parallel steps share the same number.
 - **Interactive monitoring:** A companion `goflow watch` command tails
-  all active step transcripts in a multiplexed terminal view (one pane per
+  all active step streams in a multiplexed terminal view (one pane per
   active parallel step).
 - **Structured metadata:** `step.meta.json` records:
   ```json
@@ -518,8 +518,8 @@ folder. This is critical for transparency and debugging.
   workflow YAML or `--audit-dir` CLI flag.
 
 **SDK integration:** The audit logger subscribes to all session events via
-`session.On()` and writes every event to `transcript.jsonl`. Tool calls are
-extraced from `tool.call` / `tool.result` events into `tool_calls.jsonl`.
+`session.On()` and writes every event to `stream.jsonl`. Tool calls are
+extracted from `tool.call` / `tool.result` events into `tool_calls.jsonl`.
 The `assistant.message` event's `Content` field is written to `output.md`.
 
 #### 8. Shared Memory Manager (`pkg/memory/manager.go`)
@@ -671,7 +671,7 @@ workflow-runner/
       - Apply output truncation strategy to any {{steps.X.output}} references
       - Submit prompt to session, write session_id to step.meta.json
       - Listen for session.idle event, extract assistant.message content
-      - Append to step/output.md and transcript.jsonl
+      - Append to step/output.md and stream.jsonl
       - Mark step complete, add to "ready" set any steps that depended on it
    c. Repeat until all reachable steps are complete or a step fails
    d. If a step fails and config.on_failure: "skip" → continue; if "abort" → stop
@@ -793,7 +793,7 @@ steps:
 - [ ] Example workflow: fan-out/fan-in code review pipeline with shared memory
 
 ### Phase 3 — Audit Trail & Monitoring
-- [ ] Full transcript logging (transcript.jsonl — every session event)
+- [x] Full stream logging (stream.jsonl — every session event)
 - [ ] Tool call logging (tool_calls.jsonl)
 - [ ] Real-time monitoring: `goflow watch --run <dir>` (multiplexed tail)
 - [ ] Errors log per step

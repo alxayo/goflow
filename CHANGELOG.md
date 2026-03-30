@@ -11,6 +11,17 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Stream recording to audit trail** (`stream.jsonl`): when `--streaming` is enabled, each step
+  now records all LLM events (assistant turns, message deltas, tool executions, user input
+  requests/responses) to `stream.jsonl` in JSON Lines format. Events are appended in real-time,
+  enabling:
+  - Live monitoring via `tail -f .workflow-runs/.../steps/*/stream.jsonl`
+  - TUI stream switching between parallel steps
+  - Interactive mode context: see the full stream before an LLM question
+  - Full audit compliance with timestamped event trail
+- **User input event recording**: interactive mode sessions now emit `user.input_requested` and
+  `user.input_response` events to the stream, providing a complete audit trail of human-LLM
+  interactions.
 - **Copilot SDK executor** (`pkg/executor/copilot_sdk.go`): new default backend that drives
   the Copilot CLI via the Go SDK rather than a subprocess. One SDK session is created per
   workflow step for deterministic agent selection.

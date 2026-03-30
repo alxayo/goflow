@@ -112,7 +112,7 @@ The SDK emits structured events throughout a session's lifecycle:
 Subscribing to these events would replace the current output-scraping approach with
 structured, typed audit data.
 
-**Difficulty:** Medium — define event-to-audit mapping, update `transcript.jsonl` schema.
+**Difficulty:** Medium — define event-to-audit mapping, update `stream.jsonl` schema.
 
 ---
 

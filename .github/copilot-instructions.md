@@ -254,7 +254,7 @@ Each workflow run creates a timestamped directory:
         ├── 01_analyze/
         │   ├── step.meta.json       # Agent, model, timing, session_id, token usage
         │   ├── prompt.md            # The resolved prompt sent to LLM
-        │   ├── transcript.jsonl     # Full session event stream (append-only, one JSON obj/line)
+        │   ├── stream.jsonl         # Full session event stream (append-only, one JSON obj/line)
         │   ├── output.md            # Final assistant message (the step result)
         │   ├── tool_calls.jsonl     # Tool invocations with args/results
         │   └── errors.log           # Errors if any
@@ -285,7 +285,7 @@ goflow resume --run .workflow-runs/2026-03-20T14-32-05_code-review-pipeline \
 |-------|----------|----------|-----------|
 | **1 (MVP)** | YAML parser, agent loader, sequential execution, basic audit logs | 🔴 Must | 2-3 weeks |
 | **2** | Parallelism, fan-in/fan-out, shared memory, DAG optimization | 🔴 Must | 1-2 weeks |
-| **3** | Audit UI (watch mode), live transcript tailing | 🟡 Should | 1 week |
+| **3** | Audit UI (watch mode), live stream tailing | 🟡 Should | 1 week |
 | **4** | Conditions, branching, handoff metadata parsing | 🟡 Should | 1 week |
 | **5** | Timeouts, retries, OTel tracing, provider config | 🟡 Should | 1-2 weeks |
 | **6** | Advanced (loops, sub-workflows, dry-run, regex conditions) | 🟢 Nice | 2+ weeks |
@@ -366,7 +366,7 @@ func TestParseWorkflow(t *testing.T) {
 - **Document goroutine lifetimes:** "Spawned for each ready step, waits for session.idle event"
 
 ### Logging & Audit
-- **Audit events over logs:** Write to `transcript.jsonl` for all important state changes
+- **Audit events over logs:** Write to `stream.jsonl` for all important state changes
 - **Include context:** Step ID, agent name, model used, timing, errors
 - **Struct logging:** Use structs with JSON tags rather than format strings
 

@@ -1637,7 +1637,7 @@ specified after Phase 1 and 2 are implemented and learnings are captured.
 
 ### Phase 3 — Audit Trail & Monitoring
 
-- Full transcript logging (`transcript.jsonl` — every session event via `session.On()`)
+- Full stream logging (`stream.jsonl` — every session event via `session.On()`)
 - Tool call logging (`tool_calls.jsonl`)
 - `goflow watch --run <dir>` — multiplexed live monitoring
 - Per-step `errors.log`
