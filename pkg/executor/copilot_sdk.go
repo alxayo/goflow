@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	copilot "github.com/github/copilot-sdk/go"
 )
@@ -183,17 +184,49 @@ func (e *CopilotSDKExecutor) buildSessionConfig(cfg SessionConfig, model string)
 
 	// Interactive mode: wire up the user input handler so the LLM can
 	// use the ask_user tool to request clarification.
+	// We wrap the handler to emit stream events for the audit trail,
+	// enabling TUI/CLI to show context when the LLM asks for input.
 	if cfg.Interactive && cfg.OnUserInput != nil {
 		handler := cfg.OnUserInput
+		onProgress := cfg.OnProgress
+		stepID := cfg.StepID
 		sdkCfg.OnUserInputRequest = func(req copilot.UserInputRequest, inv copilot.UserInputInvocation) (copilot.UserInputResponse, error) {
 			question := req.Question
 			if question == "" {
 				question = "Please provide the information needed for this step."
 			}
+
+			// Emit user.input_requested event for the audit trail.
+			// This allows TUIs to show the stream context before the question.
+			if onProgress != nil {
+				onProgress(SessionEventInfo{
+					Type:      "user.input_requested",
+					StepID:    stepID,
+					SessionID: "", // Session ID not available here, filled by monitor if needed
+					Timestamp: time.Now(),
+					Data: UserInputRequest{
+						Prompt:  question,
+						Choices: req.Choices,
+					},
+				})
+			}
+
 			answer, err := handler(question, req.Choices)
 			if err != nil {
 				return copilot.UserInputResponse{}, err
 			}
+
+			// Emit user.input_response event for the audit trail.
+			if onProgress != nil {
+				onProgress(SessionEventInfo{
+					Type:      "user.input_response",
+					StepID:    stepID,
+					SessionID: "",
+					Timestamp: time.Now(),
+					Data:      answer,
+				})
+			}
+
 			return copilot.UserInputResponse{
 				Answer: answer,
 			}, nil

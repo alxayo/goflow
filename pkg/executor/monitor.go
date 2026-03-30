@@ -282,6 +282,74 @@ func (m *SessionMonitor) EmitIdle() {
 	}
 }
 
+// UserInputRequest contains the details of an LLM's request for user input.
+// Used as the Data field in "user.input_requested" events.
+type UserInputRequest struct {
+	// Prompt is the question or message the LLM wants to show the user.
+	Prompt string `json:"prompt"`
+
+	// Choices is an optional list of predefined answers the user can select from.
+	// If empty, the user can provide free-form text input.
+	Choices []string `json:"choices,omitempty"`
+}
+
+// EmitUserInputRequested signals that the LLM has requested user input.
+// This event is emitted when the LLM uses the ask_user tool in interactive mode.
+//
+// The event is useful for:
+//   - TUI: Display the question and collected stream context to the user
+//   - Audit: Record exactly when and what the LLM asked
+//   - Replay: Understand the conversation flow when reviewing logs
+//
+// Example stream.jsonl entry:
+//
+//	{"ts":"...","type":"user.input_requested","data":{"prompt":"Should I continue?","choices":["yes","no"]}}
+func (m *SessionMonitor) EmitUserInputRequested(prompt string, choices []string) {
+	m.mu.Lock()
+	m.LastActivity = time.Now()
+	onProgress := m.onProgress
+	m.mu.Unlock()
+
+	if onProgress != nil {
+		onProgress(SessionEventInfo{
+			Type:      "user.input_requested",
+			StepID:    m.StepID,
+			SessionID: m.SessionID,
+			Timestamp: time.Now(),
+			Data: UserInputRequest{
+				Prompt:  prompt,
+				Choices: choices,
+			},
+		})
+	}
+}
+
+// EmitUserInputResponse signals that the user has responded to an input request.
+// This event is emitted after the user provides their answer.
+//
+// Recording both the request and response in stream.jsonl provides a complete
+// audit trail of the human-LLM interaction during interactive workflows.
+//
+// Example stream.jsonl entry:
+//
+//	{"ts":"...","type":"user.input_response","data":"yes"}
+func (m *SessionMonitor) EmitUserInputResponse(response string) {
+	m.mu.Lock()
+	m.LastActivity = time.Now()
+	onProgress := m.onProgress
+	m.mu.Unlock()
+
+	if onProgress != nil {
+		onProgress(SessionEventInfo{
+			Type:      "user.input_response",
+			StepID:    m.StepID,
+			SessionID: m.SessionID,
+			Timestamp: time.Now(),
+			Data:      response,
+		})
+	}
+}
+
 // Summary returns a brief summary of the session for logging.
 func (m *SessionMonitor) Summary() string {
 	m.mu.Lock()
