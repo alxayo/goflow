@@ -10,6 +10,7 @@ package executor
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -199,6 +200,11 @@ func (e *CopilotSDKExecutor) buildSessionConfig(cfg SessionConfig, model string)
 		}
 	}
 
+	// Streaming mode: enable real-time event delivery for progress monitoring.
+	// When true, the SDK emits assistant.message_delta events as the LLM
+	// generates output, plus detailed tool execution events.
+	sdkCfg.Streaming = cfg.Streaming
+
 	return sdkCfg
 }
 
@@ -209,46 +215,186 @@ type CopilotSDKSession struct {
 	models  []string
 }
 
-// Send submits a prompt via the SDK and blocks until the session reaches idle.
+// Send submits a prompt via the SDK and waits for the session to become idle.
 // Returns the final assistant message content.
+//
+// Event-Based Monitoring:
+// Instead of relying on SendAndWait's timeout, this method uses the SDK's event
+// system to detect completion. The session stays alive indefinitely until:
+//   - session.idle event is received (success)
+//   - session.error event is received (failure)
+//   - The context is cancelled (caller-initiated abort)
+//
+// This approach eliminates timeout configuration requirements and provides
+// real-time progress visibility when Streaming is enabled in SessionConfig.
 func (s *CopilotSDKSession) Send(ctx context.Context, prompt string) (string, error) {
-	// For non-interactive mode, compose system + user prompt into a single
-	// message. The SDK separately handles system prompts via SessionConfig,
-	// but we also compose here for consistency with CLI executor behavior
-	// and to support template-resolved prompts.
-	finalPrompt := prompt
+	// Create monitor for progress tracking
+	monitor := NewSessionMonitor(s.cfg.StepID, s.session.SessionID, s.cfg.OnProgress)
 
-	// Interactive steps: the SDK's OnUserInputRequest handler was set in
-	// buildSessionConfig, so the LLM can natively ask the user. The SDK
-	// handles the ask_user flow internally — no pre-ask pattern needed.
+	// Channels for completion signaling
+	doneCh := make(chan struct{})
+	var finalOutput string
+	var sendErr error
 
-	// SendAndWait blocks until the session reaches idle and returns the
-	// final assistant message event.
-	event, err := s.session.SendAndWait(ctx, copilot.MessageOptions{
-		Prompt: finalPrompt,
+	// Register event handler for session monitoring
+	unsubscribe := s.session.On(func(event copilot.SessionEvent) {
+		s.handleSessionEvent(event, monitor, &finalOutput, &sendErr, doneCh)
+	})
+	defer unsubscribe()
+
+	// Non-blocking send - the event handler will signal completion
+	// Send returns a message ID which we don't need.
+	_, err := s.session.Send(ctx, copilot.MessageOptions{
+		Prompt: prompt,
 	})
 	if err != nil {
-		return "", fmt.Errorf("SDK session send: %w", err)
+		return "", fmt.Errorf("sending prompt: %w", err)
 	}
 
-	// Extract the assistant message content from the response event.
-	output := extractSDKOutput(event)
-	if output == "" {
-		return "", errors.New("SDK session returned empty output")
+	monitor.EmitTurnStart()
+
+	// Wait for completion OR context cancellation
+	// Note: No timeout here - we rely on events to signal completion
+	select {
+	case <-doneCh:
+		if sendErr != nil {
+			return "", sendErr
+		}
+		if finalOutput == "" {
+			// Fallback: try to get output from streamed text
+			if streamed := monitor.GetStreamedText(); streamed != "" {
+				return strings.TrimSpace(streamed), nil
+			}
+			return "", errors.New("session completed but returned empty output")
+		}
+		return finalOutput, nil
+
+	case <-ctx.Done():
+		// Context cancelled - could be user interrupt or caller-set deadline
+		return "", fmt.Errorf("session interrupted: %w", ctx.Err())
 	}
-	return output, nil
 }
 
-// extractSDKOutput extracts the text content from a session event.
-func extractSDKOutput(event *copilot.SessionEvent) string {
-	if event == nil {
-		return ""
+// handleSessionEvent processes SDK events and updates the monitor state.
+func (s *CopilotSDKSession) handleSessionEvent(
+	event copilot.SessionEvent,
+	monitor *SessionMonitor,
+	finalOutput *string,
+	sendErr *error,
+	doneCh chan struct{},
+) {
+	switch event.Type {
+	case copilot.SessionEventTypeAssistantTurnStart:
+		monitor.EmitTurnStart()
+
+	case copilot.SessionEventTypeAssistantTurnEnd:
+		monitor.EmitTurnEnd()
+
+	case copilot.SessionEventTypeAssistantMessage:
+		// Final assistant message - capture the full content
+		if event.Data.Content != nil {
+			*finalOutput = strings.TrimSpace(*event.Data.Content)
+		}
+
+	case copilot.SessionEventTypeAssistantMessageDelta:
+		// Streaming text delta
+		if event.Data.DeltaContent != nil {
+			monitor.AppendStreamedText(*event.Data.DeltaContent)
+		}
+
+	case copilot.SessionEventTypeToolExecutionStart:
+		// Tool starting execution
+		toolName := ""
+		if event.Data.ToolName != nil {
+			toolName = *event.Data.ToolName
+		}
+		argsJSON := ""
+		if event.Data.Arguments != nil {
+			// Arguments is interface{}, marshal to string for logging
+			if argsBytes, err := marshalJSONSafe(event.Data.Arguments); err == nil {
+				argsJSON = string(argsBytes)
+			}
+		}
+		monitor.StartToolCall(toolName, argsJSON)
+
+	case copilot.SessionEventTypeToolExecutionComplete:
+		// Tool finished execution
+		toolName := ""
+		if event.Data.ToolName != nil {
+			toolName = *event.Data.ToolName
+		}
+		result := ""
+		if event.Data.Result != nil && event.Data.Result.Content != nil {
+			result = *event.Data.Result.Content
+		}
+		monitor.CompleteToolCall(toolName, result, "completed")
+
+	case copilot.SessionEventTypeSessionIdle:
+		// Session completed successfully
+		monitor.EmitIdle()
+		safeClose(doneCh)
+
+	case copilot.SessionEventTypeSessionError:
+		// Session error occurred
+		errMsg := "unknown session error"
+		if event.Data.Message != nil {
+			errMsg = *event.Data.Message
+		}
+		monitor.SetError(errMsg)
+		*sendErr = fmt.Errorf("session error: %s", errMsg)
+		safeClose(doneCh)
+
+	case copilot.SessionEventTypeSubagentStarted:
+		// Subagent delegation started
+		if s.cfg.OnProgress != nil {
+			agentName := ""
+			if event.Data.AgentName != nil {
+				agentName = *event.Data.AgentName
+			}
+			s.cfg.OnProgress(SessionEventInfo{
+				Type:      "subagent.started",
+				StepID:    s.cfg.StepID,
+				SessionID: s.session.SessionID,
+				Timestamp: event.Timestamp,
+				Data:      map[string]string{"agent": agentName},
+			})
+		}
+
+	case copilot.SessionEventTypeSubagentCompleted:
+		// Subagent delegation completed
+		if s.cfg.OnProgress != nil {
+			agentName := ""
+			if event.Data.AgentName != nil {
+				agentName = *event.Data.AgentName
+			}
+			s.cfg.OnProgress(SessionEventInfo{
+				Type:      "subagent.completed",
+				StepID:    s.cfg.StepID,
+				SessionID: s.session.SessionID,
+				Timestamp: event.Timestamp,
+				Data:      map[string]string{"agent": agentName},
+			})
+		}
 	}
-	// The Data.Content field holds the assistant's text response.
-	if event.Data.Content != nil {
-		return strings.TrimSpace(*event.Data.Content)
+}
+
+// marshalJSONSafe marshals an interface{} value to JSON bytes.
+// Returns an empty byte slice on error rather than failing.
+func marshalJSONSafe(v interface{}) ([]byte, error) {
+	if v == nil {
+		return []byte("null"), nil
 	}
-	return ""
+	return json.Marshal(v)
+}
+
+// safeClose closes a channel only if it hasn't been closed already.
+func safeClose(ch chan struct{}) {
+	select {
+	case <-ch:
+		// Already closed
+	default:
+		close(ch)
+	}
 }
 
 // SessionID returns the unique session identifier for resume support.

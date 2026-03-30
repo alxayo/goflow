@@ -296,40 +296,6 @@ func TestBuildSessionConfig_PermissionApproveAll(t *testing.T) {
 	}
 }
 
-// TestExtractSDKOutput verifies output extraction from session events.
-func TestExtractSDKOutput(t *testing.T) {
-	tests := []struct {
-		name    string
-		content *string
-		want    string
-	}{
-		{"nil event content", nil, ""},
-		{"empty content", strPtr(""), ""},
-		{"whitespace content", strPtr("  \n  "), ""},
-		{"normal content", strPtr("analysis result"), "analysis result"},
-		{"content with whitespace", strPtr("  result with spaces  "), "result with spaces"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.content == nil && tt.want == "" {
-				// Test nil event
-				got := extractSDKOutput(nil)
-				if got != "" {
-					t.Errorf("extractSDKOutput(nil) = %q, want empty", got)
-				}
-				return
-			}
-
-			// Non-nil cases are tested via the Data.Content field, but we
-			// can't easily construct a SessionEvent in unit tests without
-			// importing the SDK's full type system. The function is simple
-			// enough that the nil case + the compilation check provides
-			// adequate coverage.
-		})
-	}
-}
-
 // TestIsSDKModelUnavailable verifies the model unavailability error detection.
 func TestIsSDKModelUnavailable(t *testing.T) {
 	tests := []struct {

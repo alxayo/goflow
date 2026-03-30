@@ -36,10 +36,28 @@ type StepExecutor struct {
 	// OnUserInput is the callback invoked when the LLM requests user
 	// clarification. Only used when Interactive is true.
 	OnUserInput UserInputHandler
+
+	// Streaming enables real-time event monitoring for session progress.
+	// When true, the SDK emits events as the LLM works, eliminating the
+	// need for timeout configuration on long-running steps.
+	Streaming bool
+
+	// OnProgress is called for each significant session event when Streaming
+	// is enabled. Use this for real-time CLI output or audit logging.
+	OnProgress ProgressHandler
 }
 
 // Execute runs a single step and returns its result.
 // It is the caller's responsibility to ensure dependencies are satisfied.
+//
+// Timeout Handling:
+// If step.Timeout is set (e.g., "120s"), a context deadline is applied. This allows
+// you to override or extend the SDK's internal timeout limits. For example:
+//   - SDK default: ~60 seconds
+//   - Set timeout: "120s" for slow operations
+//   - Set timeout: "300s" (5 minutes) for complex multi-agent orchestration
+//
+// The context deadline applies to both session creation and the Send call.
 func (se *StepExecutor) Execute(
 	ctx context.Context,
 	step workflow.Step,
@@ -52,6 +70,17 @@ func (se *StepExecutor) Execute(
 	result := &workflow.StepResult{
 		StepID:    step.ID,
 		StartedAt: startedAt.UTC().Format(time.RFC3339),
+	}
+
+	// 0. Apply step-level timeout if specified.
+	if step.Timeout != "" {
+		timeout, err := time.ParseDuration(step.Timeout)
+		if err == nil && timeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, timeout)
+			defer cancel()
+		}
+		// If timeout is malformed, log but continue (non-fatal).
 	}
 
 	// 1. Evaluate condition — skip if not met.
@@ -89,6 +118,7 @@ func (se *StepExecutor) Execute(
 	// 4. Build session config from agent.
 	// Include the interactive flag and user-input handler so the session
 	// knows whether to allow the LLM to ask clarification questions.
+	// Also include streaming config for event-based progress monitoring.
 	sessionCfg := SessionConfig{
 		SystemPrompt: agent.Prompt,
 		Tools:        agent.Tools,
@@ -96,6 +126,9 @@ func (se *StepExecutor) Execute(
 		Models:       se.resolveModels(step, agent),
 		Interactive:  se.Interactive,
 		OnUserInput:  se.OnUserInput,
+		Streaming:    se.Streaming,
+		OnProgress:   se.OnProgress,
+		StepID:       step.ID,
 	}
 
 	// 5. Create SDK session.
