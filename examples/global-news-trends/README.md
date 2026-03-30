@@ -82,6 +82,11 @@ go build -o goflow ./cmd/workflow-runner/main.go
 ./goflow run \
   --workflow examples/global-news-trends/global-news-trends.yaml \
   --verbose
+
+# Or stream LLM output as it generates:
+./goflow run \
+  --workflow examples/global-news-trends/global-news-trends.yaml \
+  --stream
 ```
 
 ### With custom news sites

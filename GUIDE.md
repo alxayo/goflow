@@ -10,6 +10,7 @@ Key runtime facts:
 
 - **Event-based session monitoring**: Sessions complete naturally when the LLM finishes (via `session.idle` event). No timeout configuration is required for long-running operations.
 - **Streaming progress**: Use `--verbose` to see real-time progress (tool calls, agent delegations, session completion).
+- **Streaming LLM output**: Use `--stream` to see the LLM's response as it generates, token by token.
 - `goflow run` uses parallel DAG-level execution with `config.max_concurrency` limiting concurrent steps.
 - Fan-out step failures are handled in best-effort mode (sibling steps continue).
 - `retry_count` is active for transient timeout-style failures.

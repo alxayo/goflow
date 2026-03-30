@@ -122,9 +122,10 @@ inputs:
        timeout: "10m"  # More time for complex tasks
    ```
 
-3. **Use --verbose to monitor progress** — See what the agent is doing:
+3. **Use --verbose or --stream to monitor progress** — See what the agent is doing:
    ```bash
-   goflow run --workflow my.yaml --verbose
+   goflow run --workflow my.yaml --verbose  # See tool calls
+   goflow run --workflow my.yaml --stream   # See LLM output
    ```
 
 4. **Simplify the prompt** — Complex prompts may cause the agent to spin

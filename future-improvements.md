@@ -5,18 +5,20 @@ Each feature maps to a real API surface in `github.com/github/copilot-sdk/go v0.
 
 ---
 
-## Streaming Output
+## ~~Streaming Output~~ ✅ IMPLEMENTED
 
 **SDK API:** `session.On("assistant.message_delta", callback)`
 
-Currently `SendAndWait` blocks until the full response is ready. The SDK supports streaming
-via event subscriptions, which would allow:
+**Status:** Implemented in v1.x via `--stream` CLI flag.
 
-- Real-time token-by-token output in the terminal
-- Live `transcript.jsonl` entries as the model generates
-- Better UX for long-running steps (users see progress immediately)
+Usage:
+```bash
+# Stream LLM output token-by-token
+goflow run --workflow example.yaml --stream
 
-**Difficulty:** Low — subscribe to `assistant.message_delta` events, pipe to stdout and audit log.
+# Combine with verbose for full visibility
+goflow run --workflow example.yaml --verbose --stream
+```
 
 ---
 
@@ -242,7 +244,7 @@ Change the model used by a session without creating a new one:
 
 | Feature | Impact | Difficulty | Suggested Phase |
 |---|---|---|---|
-| Streaming Output | High | Low | Phase 3 |
+| ~~Streaming Output~~ | ~~High~~ | ~~Low~~ | ✅ Implemented |
 | Session Resume | High | Medium | Phase 3 |
 | Hooks (Pre/Post Tool) | High | Medium | Phase 5 |
 | Session Lifecycle Events | High | Medium | Phase 5 |

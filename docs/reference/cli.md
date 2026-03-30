@@ -29,12 +29,13 @@ goflow run --workflow <path> [options]
 | `--audit-dir` | No | Overrides `config.audit_dir` |
 | `--mock` | No | Uses the mock executor and returns deterministic `mock output` |
 | `--interactive` | No | Wires the user-input handler so interactive steps can ask for clarification |
-| `--verbose` | No | Enables streaming progress output and step status information to stderr |
+| `--verbose` | No | Enables progress output (tool calls, session lifecycle) to stderr |
+| `--stream` | No | Streams LLM output in real-time (token by token) to stderr |
 | `--cli` | No | Uses the legacy CLI subprocess executor instead of the SDK |
 
-#### Verbose Streaming Output
+#### Verbose Mode
 
-When `--verbose` is enabled, goflow displays real-time session progress:
+When `--verbose` is enabled, goflow displays session lifecycle events:
 
 ```bash
 goflow run --workflow pipeline.yaml --verbose
@@ -50,6 +51,22 @@ Output includes:
 ```
 
 This provides visibility into long-running sessions without requiring timeout configuration.
+
+#### Streaming LLM Output
+
+When `--stream` is enabled, goflow displays the LLM's response as it generates token by token:
+
+```bash
+goflow run --workflow pipeline.yaml --stream
+```
+
+You can combine both flags for full visibility:
+
+```bash
+goflow run --workflow pipeline.yaml --verbose --stream
+```
+
+This shows both lifecycle events AND the actual LLM text as it streams.
 
 #### Examples
 

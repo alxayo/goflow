@@ -15,8 +15,9 @@ The most important current facts are:
 5. **Event-based session monitoring**: Sessions complete naturally when the LLM finishes (via `session.idle` event). No timeout configuration is required for long-running operations.
 6. Step `timeout` is **optional** — use it only as a safety limit for CI/CD or to prevent runaway sessions. Most workflows don't need it.
 7. `--verbose` mode shows real-time progress: tool calls, agent delegations, and session completion.
-8. `output.truncate` is parsed and helper code exists, but normal workflow execution does not automatically apply truncation yet.
-9. Shared-memory helpers exist in the codebase, but automatic shared-memory wiring is not yet active in the main CLI flow.
+8. `--stream` mode shows the LLM's response as it generates, token by token.
+9. `output.truncate` is parsed and helper code exists, but normal workflow execution does not automatically apply truncation yet.
+10. Shared-memory helpers exist in the codebase, but automatic shared-memory wiring is not yet active in the main CLI flow.
 
 For the implementation-accurate field-by-field reference, see [SETTINGS_REFERENCE.md](SETTINGS_REFERENCE.md) and [DOCS.md](DOCS.md).
 

@@ -92,14 +92,20 @@ steps:
     timeout: "5m"  # CI job must complete in reasonable time
 ```
 
-### 3. **Use --verbose to monitor long-running sessions**
+### 3. **Use --verbose or --stream to monitor long-running sessions**
 
 ```bash
-# See real-time progress without needing timeout
+# See session lifecycle events (tool calls, completion)
 goflow run --workflow analysis.yaml --verbose
+
+# See LLM output as it generates
+goflow run --workflow analysis.yaml --stream
+
+# Both
+goflow run --workflow analysis.yaml --verbose --stream
 ```
 
-Output shows:
+Verbose output shows:
 ```
 [analyze] Agent turn started
 [analyze] Calling tool: grep_search

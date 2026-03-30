@@ -58,9 +58,10 @@ As you learn, these reference pages will be helpful:
 If you get stuck:
 
 1. **Check the error message** — goflow provides detailed validation errors
-2. **Use `--verbose`** — See step-by-step progress
-3. **Check the audit trail** — `.workflow-runs/` contains the exact prompts and outputs
-4. **Visit [Troubleshooting](../troubleshooting.md)** — Common issues and solutions
+2. **Use `--verbose`** — See tool calls and session lifecycle
+3. **Use `--stream`** — See LLM output as it generates
+4. **Check the audit trail** — `.workflow-runs/` contains the exact prompts and outputs
+5. **Visit [Troubleshooting](../troubleshooting.md)** — Common issues and solutions
 
 ---
 
