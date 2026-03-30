@@ -50,14 +50,20 @@ type StepExecutor struct {
 // Execute runs a single step and returns its result.
 // It is the caller's responsibility to ensure dependencies are satisfied.
 //
-// Timeout Handling:
-// If step.Timeout is set (e.g., "120s"), a context deadline is applied. This allows
-// you to override or extend the SDK's internal timeout limits. For example:
-//   - SDK default: ~60 seconds
-//   - Set timeout: "120s" for slow operations
-//   - Set timeout: "300s" (5 minutes) for complex multi-agent orchestration
+// Event-Based Completion:
+// The executor uses event-driven completion detection via the SDK's Session.On()
+// API, which means sessions run until the LLM finishes naturally. There is no
+// default timeout - sessions complete when the session.idle event is received.
 //
-// The context deadline applies to both session creation and the Send call.
+// Optional Timeout Override:
+// If step.Timeout is set (e.g., "120s"), a context deadline is applied as a
+// safety limit. This is useful for:
+//   - Preventing runaway sessions from consuming resources indefinitely
+//   - CI/CD pipelines with strict time bounds
+//   - Debugging workflows that might be stuck
+//
+// In most cases, you do NOT need to set a timeout - the event-based approach
+// handles completion automatically.
 func (se *StepExecutor) Execute(
 	ctx context.Context,
 	step workflow.Step,
