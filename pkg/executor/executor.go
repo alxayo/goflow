@@ -125,6 +125,11 @@ func (se *StepExecutor) Execute(
 	// Include the interactive flag and user-input handler so the session
 	// knows whether to allow the LLM to ask clarification questions.
 	// Also include streaming config for event-based progress monitoring.
+	//
+	// When streaming is enabled and we have a stepLogger, we wrap the
+	// OnProgress callback to persist events to stream.jsonl while also
+	// forwarding them to the original handler (e.g., for TUI display).
+	progressHandler := se.wrapProgressHandler(stepLogger)
 	sessionCfg := SessionConfig{
 		SystemPrompt: agent.Prompt,
 		Tools:        agent.Tools,
@@ -133,7 +138,7 @@ func (se *StepExecutor) Execute(
 		Interactive:  se.Interactive,
 		OnUserInput:  se.OnUserInput,
 		Streaming:    se.Streaming,
-		OnProgress:   se.OnProgress,
+		OnProgress:   progressHandler,
 		StepID:       step.ID,
 	}
 
@@ -382,5 +387,52 @@ func sleepWithContext(ctx context.Context, d time.Duration) bool {
 		return false
 	case <-t.C:
 		return true
+	}
+}
+
+// wrapProgressHandler creates a progress handler that persists streaming events
+// to the audit trail while also forwarding them to the original handler.
+//
+// This enables two key use cases:
+//  1. Full audit trail: Every LLM token and tool call is recorded to stream.jsonl
+//  2. Real-time display: The original handler (e.g., TUI) still receives all events
+//
+// When stepLogger is nil (no auditing), this returns the original handler unchanged.
+// When the original handler is nil (no TUI), events are still written to the audit log.
+//
+// The stream.jsonl file is written in real-time, so it can be tailed during execution:
+//
+//	tail -f .workflow-runs/.../steps/01_analyze/stream.jsonl
+//
+// This is particularly useful for:
+//   - Debugging stuck steps: See exactly what the LLM was doing
+//   - Interactive mode: Show context when the LLM asks for user input
+//   - TUI stream switching: Let users switch between parallel step streams
+func (se *StepExecutor) wrapProgressHandler(stepLogger *audit.StepLogger) ProgressHandler {
+	// If no step logger or streaming disabled, just return the original handler.
+	if stepLogger == nil || !se.Streaming {
+		return se.OnProgress
+	}
+
+	return func(event SessionEventInfo) {
+		// Convert the executor event to an audit stream event.
+		// The StreamEvent format is optimized for JSONL storage and later analysis.
+		streamEvent := audit.StreamEvent{
+			Timestamp: event.Timestamp.Format(time.RFC3339Nano),
+			Type:      event.Type,
+			Data:      event.Data,
+		}
+
+		// Write to stream.jsonl. We ignore errors here to avoid blocking the
+		// LLM session on disk I/O issues. The audit trail is best-effort;
+		// step execution should not fail due to audit write errors.
+		_ = stepLogger.AppendStreamEvent(streamEvent)
+
+		// Forward to the original handler (e.g., for TUI display).
+		// This allows the CLI to show real-time streaming output while
+		// simultaneously recording to the audit trail.
+		if se.OnProgress != nil {
+			se.OnProgress(event)
+		}
 	}
 }
