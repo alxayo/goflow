@@ -246,6 +246,45 @@ func runCommand(args []string, stdout, stderr io.Writer) int {
 		AuditLogger:  auditLogger,
 		Truncate:     wf.Output.Truncate,
 		DefaultModel: wf.Config.Model,
+		Streaming:    *verbose, // Enable streaming in verbose mode
+	}
+
+	// Wire up verbose progress handler if enabled.
+	if *verbose {
+		stepExec.OnProgress = func(event executor.SessionEventInfo) {
+			// Type assert Data to map[string]string if available.
+			data, _ := event.Data.(map[string]string)
+			switch event.Type {
+			case "turn.start":
+				fmt.Fprintf(stderr, "[%s] Agent turn started\n", event.StepID)
+			case "tool.start":
+				if data != nil {
+					if tool, ok := data["tool"]; ok {
+						fmt.Fprintf(stderr, "[%s] Calling tool: %s\n", event.StepID, tool)
+					}
+				}
+			case "tool.complete":
+				if data != nil {
+					if tool, ok := data["tool"]; ok {
+						fmt.Fprintf(stderr, "[%s] Tool completed: %s\n", event.StepID, tool)
+					}
+				}
+			case "subagent.started":
+				if data != nil {
+					if agent, ok := data["agent"]; ok {
+						fmt.Fprintf(stderr, "[%s] Delegating to subagent: %s\n", event.StepID, agent)
+					}
+				}
+			case "session.idle":
+				fmt.Fprintf(stderr, "[%s] Session completed\n", event.StepID)
+			case "session.error":
+				if data != nil {
+					if msg, ok := data["error"]; ok {
+						fmt.Fprintf(stderr, "[%s] Session error: %s\n", event.StepID, msg)
+					}
+				}
+			}
+		}
 	}
 
 	// 10. Build user-input handler for interactive mode.
