@@ -356,3 +356,255 @@ func TestFinalizeRun(t *testing.T) {
 		t.Error("completed_at is missing after finalize")
 	}
 }
+
+// --- Stream Recording Tests ---
+
+// TestAppendStreamEvent_SingleEvent verifies that a single stream event
+// is correctly written to stream.jsonl in JSON Lines format.
+func TestAppendStreamEvent_SingleEvent(t *testing.T) {
+	tmp := t.TempDir()
+	rl, err := NewRunLogger(tmp, "stream-test")
+	if err != nil {
+		t.Fatalf("NewRunLogger: %v", err)
+	}
+
+	sl, err := rl.NewStepLogger("analyze", 1)
+	if err != nil {
+		t.Fatalf("NewStepLogger: %v", err)
+	}
+
+	event := StreamEvent{
+		Timestamp: "2026-03-30T14:32:05.001Z",
+		Type:      "assistant.turn_start",
+		Data:      nil,
+	}
+
+	if err := sl.AppendStreamEvent(event); err != nil {
+		t.Fatalf("AppendStreamEvent: %v", err)
+	}
+
+	// Read and verify the stream.jsonl file.
+	data, err := os.ReadFile(filepath.Join(sl.StepDir, "stream.jsonl"))
+	if err != nil {
+		t.Fatalf("reading stream.jsonl: %v", err)
+	}
+
+	// Should be exactly one line (plus a trailing newline).
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 1 {
+		t.Errorf("expected 1 line, got %d", len(lines))
+	}
+
+	// Parse the JSON line.
+	var parsed StreamEvent
+	if err := json.Unmarshal([]byte(lines[0]), &parsed); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	if parsed.Type != "assistant.turn_start" {
+		t.Errorf("type = %q, want assistant.turn_start", parsed.Type)
+	}
+	if parsed.Timestamp != "2026-03-30T14:32:05.001Z" {
+		t.Errorf("ts = %q, want 2026-03-30T14:32:05.001Z", parsed.Timestamp)
+	}
+}
+
+// TestAppendStreamEvent_MultipleEvents verifies that multiple events are
+// correctly appended to stream.jsonl, each on its own line.
+func TestAppendStreamEvent_MultipleEvents(t *testing.T) {
+	tmp := t.TempDir()
+	rl, err := NewRunLogger(tmp, "stream-multi")
+	if err != nil {
+		t.Fatalf("NewRunLogger: %v", err)
+	}
+
+	sl, err := rl.NewStepLogger("review", 1)
+	if err != nil {
+		t.Fatalf("NewStepLogger: %v", err)
+	}
+
+	// Simulate a typical streaming sequence.
+	events := []StreamEvent{
+		{Timestamp: "2026-03-30T14:32:05.001Z", Type: "assistant.turn_start"},
+		{Timestamp: "2026-03-30T14:32:05.050Z", Type: "assistant.message_delta", Data: "I'll analyze"},
+		{Timestamp: "2026-03-30T14:32:05.080Z", Type: "assistant.message_delta", Data: " the code"},
+		{Timestamp: "2026-03-30T14:32:05.200Z", Type: "tool.execution_start", Data: map[string]string{"tool": "grep", "args": `{"query":"password"}`}},
+		{Timestamp: "2026-03-30T14:32:06.500Z", Type: "tool.execution_complete", Data: map[string]string{"tool": "grep", "status": "completed"}},
+		{Timestamp: "2026-03-30T14:32:07.000Z", Type: "assistant.turn_end"},
+		{Timestamp: "2026-03-30T14:32:07.100Z", Type: "session.idle"},
+	}
+
+	for _, e := range events {
+		if err := sl.AppendStreamEvent(e); err != nil {
+			t.Fatalf("AppendStreamEvent: %v", err)
+		}
+	}
+
+	// Read and verify the stream.jsonl file.
+	data, err := os.ReadFile(filepath.Join(sl.StepDir, "stream.jsonl"))
+	if err != nil {
+		t.Fatalf("reading stream.jsonl: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != len(events) {
+		t.Errorf("expected %d lines, got %d", len(events), len(lines))
+	}
+
+	// Verify each line is valid JSON and has the expected type.
+	for i, line := range lines {
+		var parsed StreamEvent
+		if err := json.Unmarshal([]byte(line), &parsed); err != nil {
+			t.Errorf("line %d invalid JSON: %v", i, err)
+			continue
+		}
+		if parsed.Type != events[i].Type {
+			t.Errorf("line %d type = %q, want %q", i, parsed.Type, events[i].Type)
+		}
+	}
+}
+
+// TestAppendStreamEvent_WithData verifies that event data is correctly
+// serialized for different data types (strings, maps).
+func TestAppendStreamEvent_WithData(t *testing.T) {
+	tmp := t.TempDir()
+	rl, err := NewRunLogger(tmp, "stream-data")
+	if err != nil {
+		t.Fatalf("NewRunLogger: %v", err)
+	}
+
+	sl, err := rl.NewStepLogger("process", 1)
+	if err != nil {
+		t.Fatalf("NewStepLogger: %v", err)
+	}
+
+	// Test string data (message delta).
+	deltaEvent := StreamEvent{
+		Timestamp: "2026-03-30T14:32:05.050Z",
+		Type:      "assistant.message_delta",
+		Data:      "Hello, I'll analyze the code for you.",
+	}
+	if err := sl.AppendStreamEvent(deltaEvent); err != nil {
+		t.Fatalf("AppendStreamEvent (delta): %v", err)
+	}
+
+	// Test map data (tool execution).
+	toolEvent := StreamEvent{
+		Timestamp: "2026-03-30T14:32:05.200Z",
+		Type:      "tool.execution_start",
+		Data: map[string]string{
+			"tool": "semantic_search",
+			"args": `{"query":"authentication"}`,
+		},
+	}
+	if err := sl.AppendStreamEvent(toolEvent); err != nil {
+		t.Fatalf("AppendStreamEvent (tool): %v", err)
+	}
+
+	// Read and parse the stream.jsonl file.
+	data, err := os.ReadFile(filepath.Join(sl.StepDir, "stream.jsonl"))
+	if err != nil {
+		t.Fatalf("reading stream.jsonl: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 lines, got %d", len(lines))
+	}
+
+	// Verify delta event data.
+	var delta map[string]interface{}
+	if err := json.Unmarshal([]byte(lines[0]), &delta); err != nil {
+		t.Fatalf("line 0 invalid JSON: %v", err)
+	}
+	if delta["data"] != "Hello, I'll analyze the code for you." {
+		t.Errorf("delta data = %v, want string", delta["data"])
+	}
+
+	// Verify tool event data.
+	var tool map[string]interface{}
+	if err := json.Unmarshal([]byte(lines[1]), &tool); err != nil {
+		t.Fatalf("line 1 invalid JSON: %v", err)
+	}
+	toolData, ok := tool["data"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("tool data is not a map")
+	}
+	if toolData["tool"] != "semantic_search" {
+		t.Errorf("tool name = %v, want semantic_search", toolData["tool"])
+	}
+}
+
+// TestAppendStreamEvent_UserInput verifies that user input request/response
+// events are correctly serialized with their structured data.
+func TestAppendStreamEvent_UserInput(t *testing.T) {
+	tmp := t.TempDir()
+	rl, err := NewRunLogger(tmp, "stream-input")
+	if err != nil {
+		t.Fatalf("NewRunLogger: %v", err)
+	}
+
+	sl, err := rl.NewStepLogger("interactive", 1)
+	if err != nil {
+		t.Fatalf("NewStepLogger: %v", err)
+	}
+
+	// Simulate user input request with choices.
+	requestEvent := StreamEvent{
+		Timestamp: "2026-03-30T14:32:10.000Z",
+		Type:      "user.input_requested",
+		Data: map[string]interface{}{
+			"prompt":  "Should I continue with the security scan?",
+			"choices": []string{"yes", "no", "skip"},
+		},
+	}
+	if err := sl.AppendStreamEvent(requestEvent); err != nil {
+		t.Fatalf("AppendStreamEvent (request): %v", err)
+	}
+
+	// Simulate user response.
+	responseEvent := StreamEvent{
+		Timestamp: "2026-03-30T14:32:15.000Z",
+		Type:      "user.input_response",
+		Data:      "yes",
+	}
+	if err := sl.AppendStreamEvent(responseEvent); err != nil {
+		t.Fatalf("AppendStreamEvent (response): %v", err)
+	}
+
+	// Read and verify the stream.jsonl file.
+	data, err := os.ReadFile(filepath.Join(sl.StepDir, "stream.jsonl"))
+	if err != nil {
+		t.Fatalf("reading stream.jsonl: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 lines, got %d", len(lines))
+	}
+
+	// Verify request event.
+	var request map[string]interface{}
+	if err := json.Unmarshal([]byte(lines[0]), &request); err != nil {
+		t.Fatalf("line 0 invalid JSON: %v", err)
+	}
+	if request["type"] != "user.input_requested" {
+		t.Errorf("request type = %v, want user.input_requested", request["type"])
+	}
+	requestData, _ := request["data"].(map[string]interface{})
+	if requestData["prompt"] != "Should I continue with the security scan?" {
+		t.Errorf("request prompt mismatch")
+	}
+
+	// Verify response event.
+	var response map[string]interface{}
+	if err := json.Unmarshal([]byte(lines[1]), &response); err != nil {
+		t.Fatalf("line 1 invalid JSON: %v", err)
+	}
+	if response["type"] != "user.input_response" {
+		t.Errorf("response type = %v, want user.input_response", response["type"])
+	}
+	if response["data"] != "yes" {
+		t.Errorf("response data = %v, want yes", response["data"])
+	}
+}
