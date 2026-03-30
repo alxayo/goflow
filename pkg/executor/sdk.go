@@ -67,4 +67,9 @@ type SessionConfig struct {
 	// true. If Interactive is true but OnUserInput is nil, user input
 	// requests will fail with an error.
 	OnUserInput UserInputHandler
+
+	// Provider holds BYOK configuration when using the SDK executor.
+	// Nil means "use GitHub Models" (default). The CopilotCLIExecutor
+	// ignores this field.
+	Provider *ProviderConfig
 }

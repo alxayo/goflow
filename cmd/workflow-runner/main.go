@@ -46,7 +46,8 @@ Options:
   --workflow      Path to workflow YAML file (required)
   --inputs        Key=value input pairs (repeatable)
   --audit-dir     Override audit directory (default from workflow config)
-  --mock          Use mock executor instead of Copilot CLI
+  --mock          Use mock executor instead of real backend
+  --cli           Use CLI subprocess executor instead of SDK (fallback)
   --interactive   Allow agents to ask for user input during execution
   --verbose       Enable verbose logging
 `
@@ -97,7 +98,8 @@ func runCommand(args []string, stdout, stderr io.Writer) int {
 
 	workflowPath := fs.String("workflow", "", "Path to workflow YAML file (required)")
 	auditDirFlag := fs.String("audit-dir", "", "Override audit directory")
-	useMock := fs.Bool("mock", false, "Use mock executor instead of Copilot CLI")
+	useMock := fs.Bool("mock", false, "Use mock executor instead of real backend")
+	useCLI := fs.Bool("cli", false, "Use CLI subprocess executor instead of SDK (fallback)")
 	interactive := fs.Bool("interactive", false, "Allow agents to ask for user input during execution")
 	verbose := fs.Bool("verbose", false, "Enable verbose logging")
 	inputs := &inputsFlag{values: make(map[string]string)}
@@ -206,8 +208,36 @@ func runCommand(args []string, stdout, stderr io.Writer) int {
 	if *useMock {
 		fmt.Fprintln(stderr, "NOTE: Using mock executor.")
 		sessionExecutor = &executor.MockSessionExecutor{DefaultResponse: "mock output"}
-	} else {
+	} else if *useCLI {
+		// Explicit --cli flag: use legacy subprocess executor.
 		sessionExecutor = &executor.CopilotCLIExecutor{}
+		if *verbose {
+			fmt.Fprintln(stderr, "Using CLI subprocess executor (--cli flag)")
+		}
+	} else {
+		// Default: SDK executor with optional BYOK provider.
+		var provider *executor.ProviderConfig
+		if wf.Config.Provider != nil {
+			provider = &executor.ProviderConfig{
+				Type:      wf.Config.Provider.Type,
+				BaseURL:   wf.Config.Provider.BaseURL,
+				APIKeyEnv: wf.Config.Provider.APIKeyEnv,
+			}
+		}
+		sdkExec, sdkErr := executor.NewCopilotSDKExecutor(provider)
+		if sdkErr != nil {
+			fmt.Fprintf(stderr, "error: %v\n", sdkErr)
+			return 1
+		}
+		defer sdkExec.Close()
+		sessionExecutor = sdkExec
+		if *verbose {
+			if provider != nil {
+				fmt.Fprintf(stderr, "Using SDK executor with %s provider (BYOK)\n", provider.Type)
+			} else {
+				fmt.Fprintln(stderr, "Using SDK executor with GitHub Models (default)")
+			}
+		}
 	}
 
 	// 9. Build StepExecutor.
