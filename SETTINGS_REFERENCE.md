@@ -6,8 +6,8 @@ It is based on the current Go source code, not on planned roadmap behavior. If a
 
 ## Important Current Runtime Notes
 
-1. `goflow run` currently uses the sequential orchestrator path.
-2. `config.max_concurrency` only affects the parallel orchestrator implementation and has no effect in the normal CLI path today.
+1. `goflow run` uses the parallel orchestrator path (`RunParallel`) and executes DAG levels in dependency order.
+2. `config.max_concurrency` is active in the normal CLI path and limits concurrent steps within each level (`0` means unlimited).
 3. `output.truncate` is parsed and helper logic exists, but it is not currently applied during template injection or final output formatting.
 4. Shared-memory package support exists, but the main CLI path does not automatically wire it into execution.
 5. Older docs may describe intended future behavior; this file documents current behavior.
@@ -56,7 +56,7 @@ It is based on the current Go source code, not on planned roadmap behavior. If a
 | `agent_search_paths` | Implemented | Added to discovery scan paths |
 | `interactive` | Implemented | Default interactivity for steps unless step override is set |
 | `log_level` | Partially implemented | Defaulted to `info`, but not used to alter logger behavior |
-| `max_concurrency` | Partially implemented | Used only by `RunParallel()`, not by current CLI path |
+| `max_concurrency` | Implemented | Used by `RunParallel()` in normal CLI runs to cap same-level concurrency (`0` = unlimited) |
 | `shared_memory.*` | Parsed only in CLI path | Types exist, runtime wiring is not automatic yet |
 | `provider` | Yes (SDK executor) | Used by the SDK executor for BYOK routing. Ignored when running with `--cli` |
 | `streaming` | Parsed only | Not used by current executor |
@@ -75,8 +75,42 @@ It is based on the current Go source code, not on planned roadmap behavior. If a
 | `interactive` | Implemented | Per-step override for interaction |
 | `skills` | Parsed only | Not consumed by runtime |
 | `on_error` | Parsed only | No error-policy engine yet |
-| `retry_count` | Parsed only | No retry loop yet |
-| `timeout` | Parsed only | No per-step timeout is derived from this field yet |
+| `retry_count` | Implemented | Retries timeout-style transient failures with backoff. Attempts = `retry_count + 1` |
+| `timeout` | Implemented | Optional safety limit for step execution (e.g., `timeout: "5m"`) |
+
+### Event-based session completion
+
+Sessions complete naturally when the LLM finishes working (via `session.idle` event from the Copilot SDK). This means:
+
+- No timeout configuration is required for long-running operations
+- Sessions run until the agent finishes, just like VS Code agents
+- Use `--verbose` to see real-time progress (tool calls, agent delegations, session completion)
+
+### Timeout behavior (optional)
+
+The `timeout` step field provides an **optional safety limit**:
+
+- When not set: sessions complete via event-based monitoring (no timeout applied)
+- When set: a context deadline is applied as a maximum execution time
+- Use for CI/CD pipelines with strict time bounds or debugging stuck workflows
+
+### Retry behavior
+
+`retry_count` applies to both session creation and step prompt send.
+
+- A retry is attempted only for timeout-style transient errors (for example `context deadline exceeded`, `waiting for session.idle`, and generic timeout messages).
+- Non-timeout errors fail the step immediately.
+- Backoff is linear and short: 500ms for the first retry, then 1s, 1.5s, and so on.
+
+### Parallel failure policy
+
+In parallel levels (levels with more than one step), execution is best effort:
+
+- If one sibling step fails, other siblings in that level continue.
+- Failed step outputs are treated as empty strings for downstream template resolution.
+- Fan-in steps may still run when dependencies include failed steps, using empty output for failed dependencies.
+
+In single-step levels, failures are fail-fast and stop the workflow.
 
 ### Condition behavior
 

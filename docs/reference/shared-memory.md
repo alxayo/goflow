@@ -109,7 +109,7 @@ That design makes the most sense when the parallel orchestrator is active.
 
 ## Important Runtime Caveat
 
-The normal CLI currently calls the sequential orchestrator path, not the parallel runner. So even before shared memory is fully wired in, many users will not yet see the kind of overlapping execution that makes shared memory most useful.
+The normal CLI runs parallel DAG levels, but shared memory is still not fully wired into automatic runtime integration. Even with parallel execution active, users will not get automatic memory manager setup, tool registration, or prompt injection from `config.shared_memory` yet.
 
 ---
 

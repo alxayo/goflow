@@ -6,7 +6,15 @@ A step-by-step guide to building and running multi-agent AI workflows, from your
 
 This guide is tutorial-oriented. For the implementation-accurate reference to every currently supported setting and option, use [SETTINGS_REFERENCE.md](SETTINGS_REFERENCE.md).
 
-In particular, note that the current CLI path is still sequential, `config.max_concurrency` is not active in normal `goflow run`, and `output.truncate` plus shared-memory config are not yet fully wired into the main runtime.
+Key runtime facts:
+
+- **Event-based session monitoring**: Sessions complete naturally when the LLM finishes (via `session.idle` event). No timeout configuration is required for long-running operations.
+- **Streaming progress**: Use `--verbose` to see real-time progress (tool calls, agent delegations, session completion).
+- `goflow run` uses parallel DAG-level execution with `config.max_concurrency` limiting concurrent steps.
+- Fan-out step failures are handled in best-effort mode (sibling steps continue).
+- `retry_count` is active for transient timeout-style failures.
+- `timeout` is **optional** — use only as a safety limit for CI/CD or debugging.
+- `output.truncate` and shared-memory config are not yet fully wired into the main runtime.
 
 ---
 

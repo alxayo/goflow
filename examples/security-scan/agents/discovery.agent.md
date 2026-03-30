@@ -81,4 +81,10 @@ If a tool is NOT installed or has no applicable files, omit its marker entirely.
 - Do NOT execute any project code or scripts
 - Only run tool version checks and file discovery commands (`find`, `ls`, `wc`)
 - Do NOT read file contents — just count and list paths
-- Exclude `node_modules/`, `.git/`, `vendor/`, `__pycache__/`, `.venv/`, `venv/` from discovery
+- Exclude these directories from discovery (they contain noise and bloat output):
+  ```
+  node_modules/ .git/ vendor/ __pycache__/ .venv/ venv/ .venv-docs/
+  .pytest_cache/ .coverage/ dist/ build/ *.egg-info/ site/ .workflow-runs/
+  .idea/ .vscode/ *.pyc .DS_Store
+  ```
+- Use `find` with `-not -path` to exclude these directories efficiently

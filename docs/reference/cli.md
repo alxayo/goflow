@@ -29,7 +29,27 @@ goflow run --workflow <path> [options]
 | `--audit-dir` | No | Overrides `config.audit_dir` |
 | `--mock` | No | Uses the mock executor and returns deterministic `mock output` |
 | `--interactive` | No | Wires the user-input handler so interactive steps can ask for clarification |
-| `--verbose` | No | Prints progress and step status information to stderr |
+| `--verbose` | No | Enables streaming progress output and step status information to stderr |
+| `--cli` | No | Uses the legacy CLI subprocess executor instead of the SDK |
+
+#### Verbose Streaming Output
+
+When `--verbose` is enabled, goflow displays real-time session progress:
+
+```bash
+goflow run --workflow pipeline.yaml --verbose
+```
+
+Output includes:
+```
+[step-id] Agent turn started
+[step-id] Calling tool: grep_search
+[step-id] Tool completed: grep_search
+[step-id] Delegating to subagent: helper-agent
+[step-id] Session completed
+```
+
+This provides visibility into long-running sessions without requiring timeout configuration.
 
 #### Examples
 

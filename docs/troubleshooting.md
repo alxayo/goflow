@@ -104,14 +104,32 @@ inputs:
 
 ### "step X failed: context deadline exceeded"
 
-**Problem:** A step took too long to complete.
+**Problem:** A step exceeded its configured timeout limit.
+
+!!! note "Event-Based Completion"
+    goflow uses event-based session monitoring by default — sessions complete naturally when the LLM finishes. You only see this error if you explicitly set a `timeout` on the step.
 
 **Solutions:**
 
-1. **Simplify the prompt** — Reduce complexity
-2. **Split into smaller steps** — Break down the task
-3. **Check model availability** — API might be slow
-4. **Use mock mode to test structure** — `--mock`
+1. **Remove the timeout** — If you don't need a strict time limit, remove the `timeout` field and let the session complete naturally
+
+2. **Increase the timeout** — If you need a safety limit, increase it:
+   ```yaml
+   steps:
+     - id: long-analysis
+       agent: analyzer
+       prompt: "..."
+       timeout: "10m"  # More time for complex tasks
+   ```
+
+3. **Use --verbose to monitor progress** — See what the agent is doing:
+   ```bash
+   goflow run --workflow my.yaml --verbose
+   ```
+
+4. **Simplify the prompt** — Complex prompts may cause the agent to spin
+
+5. **Split into smaller steps** — Break down the task for better visibility
 
 ---
 

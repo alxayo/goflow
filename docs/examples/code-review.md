@@ -136,7 +136,7 @@ analyze─┤                     ├─→ aggregate
 **Phase 3:** `aggregate` waits for both, then combines  
 
 !!! note "Current CLI behavior"
-  The workflow structure is parallel-ready, but the current `goflow run` command uses the sequential orchestrator path. That means the CLI still executes same-level steps one at a time today.
+  The workflow runs with parallel fan-out on same-level steps. If one parallel branch fails, execution continues in best-effort mode and fan-in can still proceed with empty output for the failed branch.
 
 ---
 

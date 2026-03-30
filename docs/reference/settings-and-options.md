@@ -10,11 +10,14 @@ It is based on the actual Go code in the repository, not just the intended roadm
 
 Before reading the field-by-field reference, these are the most important current behavior notes:
 
-1. `goflow run` currently executes through `Orchestrator.Run()`, which processes DAG levels sequentially. A parallel runner exists in code as `RunParallel()`, but the CLI does not call it yet.
-2. `config.max_concurrency` is implemented in the parallel orchestrator, but has no effect in the normal CLI path today.
-3. `output.truncate` and the truncation helper exist in code, but automatic truncation is not currently applied during prompt template injection or final output formatting.
-4. Shared memory types and helper packages exist, but the main CLI path does not currently create a memory manager or register memory tools automatically.
-5. Several fields are parsed for future capability, but are not yet consumed by runtime execution. These are marked as `parsed only` below.
+1. `goflow run` executes through `Orchestrator.RunParallel()`, which processes DAG levels in order and runs non-interactive steps in each level concurrently.
+2. `config.max_concurrency` is active and limits concurrent steps in each parallel level (`0` means unlimited).
+3. **Event-based session monitoring**: Sessions complete naturally when the LLM finishes (via `session.idle` event). No timeout configuration is required for long-running operations.
+4. `--verbose` mode enables **streaming progress output**, showing tool calls, agent delegations, and session completion in real-time.
+5. Step `timeout` is **optional** — use it only as a safety limit for CI/CD or debugging, not as a requirement for long-running tasks.
+6. `output.truncate` and the truncation helper exist in code, but automatic truncation is not currently applied during prompt template injection or final output formatting.
+7. Shared memory types and helper packages exist, but the main CLI path does not currently create a memory manager or register memory tools automatically.
+8. Several fields are parsed for future capability, but are not yet consumed by runtime execution. These are marked as `parsed only` below.
 
 ---
 
@@ -39,7 +42,8 @@ These are the commands currently implemented in `cmd/workflow-runner/main.go`:
 | `--audit-dir` | Yes | Overrides `config.audit_dir` |
 | `--mock` | Yes | Uses `MockSessionExecutor` and returns `mock output` for each step |
 | `--interactive` | Yes | Enables user-input handler wiring so interactive steps can pause for clarification |
-| `--verbose` | Yes | Writes progress and status messages to stderr |
+| `--verbose` | Yes | Enables streaming progress output (tool calls, agent delegations) and step status to stderr |
+| `--cli` | Yes | Uses legacy CLI subprocess executor instead of the SDK |
 
 ### Exit codes
 
@@ -120,7 +124,7 @@ Defined in `pkg/workflow/types.go` and defaulted in `pkg/workflow/parser.go`.
 
 | Field | Implemented | Exact behavior |
 |---|---|---|
-| `max_concurrency` | Partially | Used by `Orchestrator.RunParallel()`, but the CLI currently calls sequential `Run()` |
+| `max_concurrency` | Yes | Passed into `Orchestrator.RunParallel()` and used to bound concurrent step execution per level |
 | `shared_memory.enabled` | Parsed only in CLI path | Stored in config, but main execution does not automatically create shared memory |
 | `shared_memory.inject_into_prompt` | Parsed only in CLI path | No automatic prompt injection currently happens in `goflow run` |
 | `shared_memory.initial_content` | Parsed only in CLI path | The memory manager supports initial content, but the CLI does not wire it in |
@@ -199,8 +203,48 @@ Defined in `pkg/workflow/types.go`, validated in `pkg/workflow/parser.go`, and e
 |---|---|---|
 | `skills` | Parsed only | Stored on the step struct but not consumed by the executor |
 | `on_error` | Parsed only | No retry/alternate branch logic currently uses this field |
-| `retry_count` | Parsed only | No retry loop currently exists in the step executor |
-| `timeout` | Parsed only | The step executor does not derive a context timeout from this field |
+| `retry_count` | Yes | Retries timeout-style transient failures. Total attempts = `retry_count + 1` |
+| `timeout` | Yes (optional) | Safety limit for step execution. Sessions complete via events by default, so timeout is only needed for CI/CD bounds or debugging |
+
+### Event-Based Session Completion
+
+goflow uses **event-based session monitoring** by default:
+
+1. Sessions subscribe to SDK events via `Session.On()`
+2. Completion is detected when `session.idle` event is received
+3. No timeout is required — sessions run until the LLM finishes naturally
+4. This mirrors VS Code agent behavior (agents can run for hours without timeout)
+
+The `timeout` field is **optional** — use it only when you need:
+- CI/CD pipeline time bounds
+- Safety limits for potentially runaway sessions
+- Debugging workflows that might be stuck
+
+### Parallel failure policy
+
+The parallel orchestrator uses a best-effort policy for levels with multiple steps:
+
+1. Sibling failures do not stop other siblings in the same level.
+2. Failed dependencies resolve to empty output for downstream template references.
+3. Fan-in steps can still execute when some upstream parallel branches failed.
+
+Single-step levels remain fail-fast: if that one step fails, the workflow stops.
+
+### Retry semantics
+
+`retry_count` is enforced in the step executor for transient timeout-style failures in either session creation or send.
+
+- Retries happen for timeout-like errors (for example `context deadline exceeded`, `waiting for session.idle`, and generic timeout messages).
+- Non-timeout errors fail immediately without retry.
+- Backoff is linear: 500ms multiplied by attempt number.
+
+### Timeout semantics
+
+`timeout` is **optional** and used as a safety limit:
+
+- When not set: sessions complete via event-based monitoring (no timeout applied)
+- When set: a context deadline is applied as a maximum execution time
+- Use for CI/CD pipelines with strict time bounds or debugging stuck workflows
 
 ### Condition evaluation details
 
@@ -375,14 +419,15 @@ The orchestrator has:
 
 ### What the CLI does today
 
-The CLI in `cmd/workflow-runner/main.go` constructs the orchestrator and calls `orch.Run(ctx, wf)`.
+The CLI in `cmd/workflow-runner/main.go` constructs the orchestrator and calls `orch.RunParallel(ctx, wf)`.
 
 That means:
 
 1. DAG levels are still built correctly.
 2. Dependencies are still respected correctly.
-3. Steps in the same level are still executed one at a time in the current CLI path.
-4. `config.max_concurrency` has no user-visible effect in normal `goflow run` today.
+3. Non-interactive steps in the same level can execute concurrently.
+4. `config.max_concurrency` has user-visible effect and limits same-level concurrency (`0` means unlimited).
+5. Levels with multiple sibling steps use best-effort failure handling; single-step levels fail fast.
 
 ---
 

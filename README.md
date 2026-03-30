@@ -8,10 +8,15 @@ The repository includes roadmap-oriented examples and docs, but the current CLI 
 
 The most important current facts are:
 
-1. `goflow run` currently executes the sequential orchestrator path.
-2. `config.max_concurrency` is implemented in the parallel orchestrator code, but not used by the normal CLI path today.
-3. `output.truncate` is parsed and helper code exists, but normal workflow execution does not automatically apply truncation yet.
-4. Shared-memory helpers exist in the codebase, but automatic shared-memory wiring is not yet active in the main CLI flow.
+1. `goflow run` executes the parallel orchestrator (`RunParallel`) level by level.
+2. `config.max_concurrency` is active and limits concurrent steps within each parallel DAG level.
+3. In parallel levels (fan-out), step failures are handled with best effort: sibling steps continue and downstream fan-in steps can still run using empty output for failed dependencies.
+4. `retry_count` is active for timeout-style transient failures in step session creation/send, with short linear backoff between retries.
+5. **Event-based session monitoring**: Sessions complete naturally when the LLM finishes (via `session.idle` event). No timeout configuration is required for long-running operations.
+6. Step `timeout` is **optional** — use it only as a safety limit for CI/CD or to prevent runaway sessions. Most workflows don't need it.
+7. `--verbose` mode shows real-time progress: tool calls, agent delegations, and session completion.
+8. `output.truncate` is parsed and helper code exists, but normal workflow execution does not automatically apply truncation yet.
+9. Shared-memory helpers exist in the codebase, but automatic shared-memory wiring is not yet active in the main CLI flow.
 
 For the implementation-accurate field-by-field reference, see [SETTINGS_REFERENCE.md](SETTINGS_REFERENCE.md) and [DOCS.md](DOCS.md).
 

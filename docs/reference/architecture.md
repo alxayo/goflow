@@ -3,7 +3,7 @@
 Technical overview of goflow's internal architecture and execution model.
 
 !!! note "Current CLI status"
-  The codebase contains both sequential and parallel orchestrator implementations, shared-memory building blocks, and truncation helpers. The current `goflow run` command still uses the sequential orchestrator path, does not automatically wire shared memory, and does not automatically apply truncation during normal execution.
+  The codebase contains both sequential and parallel orchestrator implementations, shared-memory building blocks, and truncation helpers. The current `goflow run` command uses the parallel orchestrator path (`RunParallel`), but does not automatically wire shared memory and does not automatically apply truncation during normal execution.
 
 ---
 
@@ -22,10 +22,15 @@ Technical overview of goflow's internal architecture and execution model.
 │  │  Loader   │  │  Engine   │  │            │  │   Logger   │   │
 │  └───────────┘  └───────────┘  └────────────┘  └────────────┘   │
 │                                      │                          │
+│                              ┌───────┴───────┐                  │
+│                              │    Session    │                  │
+│                              │    Monitor    │                  │
+│                              └───────┬───────┘                  │
+│                                      │                          │
 │                                      ↓                          │
 │                              ┌────────────┐                     │
 │                              │ Copilot   │                     │
-│                              │   CLI     │                     │
+│                              │   SDK     │                     │
 │                              └────────────┘                     │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -66,9 +71,17 @@ Technical overview of goflow's internal architecture and execution model.
 
 - Executes individual steps via the Copilot SDK (default) or CLI subprocess (`--cli` fallback)
 - Creates isolated sessions per step
+- Uses **event-based session monitoring** for completion detection
 - Applies templates
 - Captures outputs
 - Routes BYOK provider configuration to the SDK
+
+### Session Monitor (`pkg/executor/monitor.go`)
+
+- Tracks session state and progress via SDK events
+- Handles 67+ event types (`session.idle`, `tool.execution_start`, `assistant.message_delta`, etc.)
+- Provides real-time progress callbacks for verbose output
+- Eliminates timeout requirements for long-running sessions
 
 ### Template Engine (`pkg/workflow/template.go`)
 

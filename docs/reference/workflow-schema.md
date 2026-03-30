@@ -102,10 +102,10 @@ config:
 | `streaming` | Yes | No |
 | `log_level` | Yes | Defaulted only |
 | `agent_search_paths` | Yes | Yes |
-| `max_concurrency` | Yes | Not in the current CLI path |
+| `max_concurrency` | Yes | Yes |
 | `interactive` | Yes | Yes |
 
-Important: `goflow run` currently uses the sequential orchestrator path. The codebase has a parallel orchestrator, but the CLI does not call it yet.
+Important: `goflow run` uses the parallel orchestrator path (`RunParallel`). DAG levels execute in dependency order, with concurrent execution inside each level.
 
 ---
 
@@ -172,11 +172,30 @@ steps:
 | `condition` | Yes | Yes |
 | `skills` | Yes | No |
 | `on_error` | Yes | No |
-| `retry_count` | Yes | No |
-| `timeout` | Yes | No |
+| `retry_count` | Yes | Yes (timeout-style transient retries) |
+| `timeout` | Yes | Yes (optional safety limit) |
 | `model` | Yes | Yes |
 | `extra_dirs` | Yes | Yes |
 | `interactive` | Yes | Yes |
+
+### Event-Based Session Completion
+
+Sessions complete naturally when the LLM finishes (via `session.idle` event). No timeout is required for long-running operations — this mirrors how VS Code agents work.
+
+### Parallel failure handling
+
+In levels with multiple steps, execution is best effort:
+
+1. A failed sibling does not cancel other siblings in that same level.
+2. Downstream `{{steps.X.output}}` for failed steps resolves to an empty string.
+3. Fan-in steps can still run when one or more fan-out branches fail.
+
+In single-step levels, failures remain fail-fast and stop workflow execution.
+
+### Retry and timeout fields
+
+- `retry_count` is active and retried attempts are only for timeout-style transient errors.
+- `timeout` is **optional** — use it only as a safety limit for CI/CD pipelines or debugging stuck workflows. Sessions complete via events by default.
 
 ### Condition operators actually supported
 
