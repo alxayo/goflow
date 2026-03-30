@@ -49,7 +49,8 @@ Options:
   --mock          Use mock executor instead of real backend
   --cli           Use CLI subprocess executor instead of SDK (fallback)
   --interactive   Allow agents to ask for user input during execution
-  --verbose       Enable verbose logging
+  --verbose       Enable verbose logging (tool calls, session lifecycle)
+  --stream        Stream LLM output in real-time (token by token)
 `
 
 var (
@@ -102,6 +103,7 @@ func runCommand(args []string, stdout, stderr io.Writer) int {
 	useCLI := fs.Bool("cli", false, "Use CLI subprocess executor instead of SDK (fallback)")
 	interactive := fs.Bool("interactive", false, "Allow agents to ask for user input during execution")
 	verbose := fs.Bool("verbose", false, "Enable verbose logging")
+	stream := fs.Bool("stream", false, "Stream LLM output in real-time")
 	inputs := &inputsFlag{values: make(map[string]string)}
 	fs.Var(inputs, "inputs", "Key=value input pair (repeatable)")
 
@@ -246,41 +248,53 @@ func runCommand(args []string, stdout, stderr io.Writer) int {
 		AuditLogger:  auditLogger,
 		Truncate:     wf.Output.Truncate,
 		DefaultModel: wf.Config.Model,
-		Streaming:    *verbose, // Enable streaming in verbose mode
+		Streaming:    *verbose || *stream, // Enable streaming for verbose or stream mode
 	}
 
-	// Wire up verbose progress handler if enabled.
-	if *verbose {
+	// Wire up progress handler for verbose and/or streaming mode.
+	if *verbose || *stream {
 		stepExec.OnProgress = func(event executor.SessionEventInfo) {
-			// Type assert Data to map[string]string if available.
-			data, _ := event.Data.(map[string]string)
 			switch event.Type {
-			case "turn.start":
-				fmt.Fprintf(stderr, "[%s] Agent turn started\n", event.StepID)
-			case "tool.start":
-				if data != nil {
-					if tool, ok := data["tool"]; ok {
-						fmt.Fprintf(stderr, "[%s] Calling tool: %s\n", event.StepID, tool)
+			case "assistant.message_delta":
+				// Stream LLM text output token-by-token.
+				if *stream {
+					if delta, ok := event.Data.(string); ok {
+						fmt.Fprint(stderr, delta)
 					}
 				}
-			case "tool.complete":
-				if data != nil {
-					if tool, ok := data["tool"]; ok {
-						fmt.Fprintf(stderr, "[%s] Tool completed: %s\n", event.StepID, tool)
-					}
-				}
-			case "subagent.started":
-				if data != nil {
-					if agent, ok := data["agent"]; ok {
-						fmt.Fprintf(stderr, "[%s] Delegating to subagent: %s\n", event.StepID, agent)
-					}
-				}
-			case "session.idle":
-				fmt.Fprintf(stderr, "[%s] Session completed\n", event.StepID)
-			case "session.error":
-				if data != nil {
-					if msg, ok := data["error"]; ok {
-						fmt.Fprintf(stderr, "[%s] Session error: %s\n", event.StepID, msg)
+			default:
+				// Verbose lifecycle events.
+				if *verbose {
+					data, _ := event.Data.(map[string]string)
+					switch event.Type {
+					case "assistant.turn_start":
+						fmt.Fprintf(stderr, "[%s] Agent turn started\n", event.StepID)
+					case "tool.execution_start":
+						if data != nil {
+							if tool, ok := data["tool"]; ok {
+								fmt.Fprintf(stderr, "[%s] Calling tool: %s\n", event.StepID, tool)
+							}
+						}
+					case "tool.execution_complete":
+						if data != nil {
+							if tool, ok := data["tool"]; ok {
+								fmt.Fprintf(stderr, "[%s] Tool completed: %s\n", event.StepID, tool)
+							}
+						}
+					case "subagent.started":
+						if data != nil {
+							if agent, ok := data["agent"]; ok {
+								fmt.Fprintf(stderr, "[%s] Delegating to subagent: %s\n", event.StepID, agent)
+							}
+						}
+					case "session.idle":
+						fmt.Fprintf(stderr, "[%s] Session completed\n", event.StepID)
+					case "session.error":
+						if data != nil {
+							if msg, ok := data["error"]; ok {
+								fmt.Fprintf(stderr, "[%s] Session error: %s\n", event.StepID, msg)
+							}
+						}
 					}
 				}
 			}
