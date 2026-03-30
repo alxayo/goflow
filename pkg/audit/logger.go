@@ -183,6 +183,88 @@ func (sl *StepLogger) WriteOutput(output string) error {
 	return nil
 }
 
+// StreamEvent represents a single event in the LLM streaming session.
+// These events are appended to stream.jsonl in real-time as the session
+// progresses, providing a complete audit trail of the LLM's "thought process."
+//
+// Common event types include:
+//   - "assistant.turn_start" / "assistant.turn_end": Assistant turn boundaries
+//   - "assistant.message_delta": Streaming text chunk from the LLM
+//   - "tool.execution_start": Tool invocation begins (Data contains tool name/args)
+//   - "tool.execution_complete": Tool finished (Data contains status/result)
+//   - "session.idle": Session completed successfully
+//   - "session.error": Session encountered an error
+//   - "user.input_requested": LLM is asking for user input (interactive mode)
+//   - "user.input_response": User's response to an input request
+//
+// The stream.jsonl file is useful for:
+//   - Debugging: See exactly what the LLM was doing before an error
+//   - TUI/CLI: Display real-time streaming output or switch between step streams
+//   - Interactive mode: Show context when LLM asks for user input
+//   - Audit: Full transparency into LLM behavior for compliance
+type StreamEvent struct {
+	// Timestamp is when the event occurred, in RFC3339Nano format for
+	// sub-millisecond precision. This enables accurate timing analysis
+	// of LLM response latency and tool execution duration.
+	Timestamp string `json:"ts"`
+
+	// Type identifies the kind of event. See the StreamEvent doc comment
+	// for a list of common event types.
+	Type string `json:"type"`
+
+	// Data contains event-specific payload. The structure depends on Type:
+	//   - assistant.message_delta: string (the text chunk)
+	//   - tool.execution_start: {"tool": "...", "args": "..."}
+	//   - tool.execution_complete: {"tool": "...", "status": "...", "result": "..."}
+	//   - user.input_requested: {"prompt": "...", "choices": [...]}
+	//   - user.input_response: string (the user's answer)
+	//   - Other types may have nil Data
+	Data interface{} `json:"data,omitempty"`
+}
+
+// AppendStreamEvent writes a single streaming event to stream.jsonl in the
+// step directory. Events are appended one per line (JSON Lines format) for
+// efficient real-time writing and reading.
+//
+// This method is designed to be called from the OnProgress callback during
+// step execution. It is safe to call concurrently from multiple goroutines.
+//
+// Example stream.jsonl content:
+//
+//	{"ts":"2026-03-30T14:32:05.001Z","type":"assistant.turn_start"}
+//	{"ts":"2026-03-30T14:32:05.050Z","type":"assistant.message_delta","data":"I'll analyze"}
+//	{"ts":"2026-03-30T14:32:05.080Z","type":"assistant.message_delta","data":" the code"}
+//	{"ts":"2026-03-30T14:32:05.200Z","type":"tool.execution_start","data":{"tool":"grep"}}
+//	{"ts":"2026-03-30T14:32:06.500Z","type":"tool.execution_complete","data":{"tool":"grep","status":"completed"}}
+//
+// The file can be tailed in real-time for live monitoring:
+//
+//	tail -f .workflow-runs/2026-03-30T14-32-05_my-workflow/steps/01_analyze/stream.jsonl
+func (sl *StepLogger) AppendStreamEvent(event StreamEvent) error {
+	p := filepath.Join(sl.StepDir, "stream.jsonl")
+
+	// Open file in append mode, creating it if it doesn't exist.
+	// O_APPEND ensures atomic writes even with concurrent appenders.
+	f, err := os.OpenFile(p, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("opening stream file for step %q: %w", sl.StepID, err)
+	}
+	defer f.Close()
+
+	// Marshal to compact JSON (no indentation for JSONL format).
+	line, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("marshaling stream event: %w", err)
+	}
+
+	// Write the JSON line followed by newline.
+	if _, err := f.Write(append(line, '\n')); err != nil {
+		return fmt.Errorf("writing stream event for step %q: %w", sl.StepID, err)
+	}
+
+	return nil
+}
+
 // writeJSON marshals v as indented JSON and writes it to path.
 func writeJSON(path string, v any) error {
 	data, err := json.MarshalIndent(v, "", "  ")
