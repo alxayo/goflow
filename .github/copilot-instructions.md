@@ -4,7 +4,9 @@
 
 **Status:** Design phase (no code yet). Implement Phase 1 first (see roadmap below).
 
-**Tech Stack:** Go, Copilot SDK, YAML, DAG algorithms, Goroutines/WaitGroups.
+**Tech Stack:** Go, Copilot SDK (`github.com/github/copilot-sdk/go`), YAML, DAG algorithms, Goroutines/WaitGroups.
+
+The Copilot SDK is a Go library compiled into the `goflow` binary. Users do not install it separately — they only need the Copilot CLI on `$PATH`.
 
 ---
 
@@ -75,6 +77,9 @@ pkg/
   │   ├── loader.go                  # .agent.md parser
   │   └── discovery.go               # Agent file discovery
   ├── executor/
+  │   ├── sdk.go                     # SessionExecutor interface + SessionConfig
+  │   ├── copilot_sdk.go             # SDK executor (default)
+  │   ├── copilot_cli.go             # CLI subprocess executor (--cli fallback)
   │   └── executor.go                # Single step execution
   ├── orchestrator/
   │   └── orchestrator.go            # DAG execution + parallelism

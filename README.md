@@ -63,7 +63,7 @@ goflow run \
 
 ### 3. Real run vs mock run
 
-- Real run (default): uses Copilot CLI to generate actual review content.
+- Real run (default): uses the Copilot SDK executor (which manages Copilot CLI automatically) to generate actual review content. Pass `--cli` to use the legacy CLI subprocess executor instead.
 - Mock run: add `--mock` for deterministic test output.
 - Interactive run: add `--interactive` to let agents ask clarification questions in the terminal.
 

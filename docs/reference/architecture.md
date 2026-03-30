@@ -24,8 +24,8 @@ Technical overview of goflow's internal architecture and execution model.
 │                                      │                          │
 │                                      ↓                          │
 │                              ┌────────────┐                     │
-│                              │ Copilot SDK│                     │
-│                              │   (CLI)    │                     │
+│                              │ Copilot   │                     │
+│                              │   CLI     │                     │
 │                              └────────────┘                     │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -62,12 +62,13 @@ Technical overview of goflow's internal architecture and execution model.
 - Handles condition evaluation
 - Tracks step results
 
-### Executor (`pkg/executor/executor.go`)
+### Executor (`pkg/executor/`)
 
-- Executes individual steps
-- Creates Copilot SDK sessions
+- Executes individual steps via the Copilot SDK (default) or CLI subprocess (`--cli` fallback)
+- Creates isolated sessions per step
 - Applies templates
 - Captures outputs
+- Routes BYOK provider configuration to the SDK
 
 ### Template Engine (`pkg/workflow/template.go`)
 
@@ -119,7 +120,7 @@ For each level L in [0, 1, 2, ...]:
   For each step S in level L (parallel):
     1. Evaluate condition → skip if not met
     2. Resolve templates in prompt
-    3. Create Copilot SDK session
+    3. Create SDK session (or CLI subprocess with --cli)
     4. Send prompt to AI
     5. Capture output
     6. Write to audit trail
@@ -191,21 +192,33 @@ func ExecuteLevel(steps []Step) {
 
 ---
 
-## Copilot SDK Integration
+## SDK & CLI Integration
+
+goflow ships two executor backends. The **Copilot SDK executor** is the default;
+the legacy **CLI subprocess executor** is available via `--cli`.
+
+| Backend | Flag | Module | How it talks to Copilot |
+|---|---|---|---|
+| SDK (default) | _(none)_ | `pkg/executor/copilot_sdk.go` | JSON-RPC over stdio to a single managed CLI process |
+| CLI fallback | `--cli` | `pkg/executor/copilot_cli.go` | Spawns a new `copilot` subprocess per `Send()` call |
+
+Both backends require the Copilot CLI binary on `$PATH` (or at `~/.copilot/copilot`).
+The SDK is a Go library (`github.com/github/copilot-sdk/go`) compiled into the `goflow`
+binary — users do not install it separately.
 
 ### Session Per Step
 
-Each step creates a new SDK session:
+Each step creates an isolated SDK session:
 
 ```go
-session := sdk.NewSession(sdk.Config{
-    Agent:   step.Agent,
-    Model:   step.Model,
-    Tools:   step.Tools,
-    Prompt:  step.SystemPrompt,
-})
-
-response := session.Send(step.Prompt)
+config := &copilot.SessionConfig{
+    Model:          step.Model,
+    SystemMessage:  &copilot.SystemMessageConfig{Content: step.SystemPrompt},
+    AvailableTools: step.Tools,
+    Provider:       providerConfig,  // nil = GitHub Models, non-nil = BYOK
+}
+session, _ := client.CreateSession(ctx, config)
+result, _ := session.SendAndWait(ctx, copilot.MessageOptions{Content: prompt})
 ```
 
 ### Why Session Per Step?
@@ -214,16 +227,18 @@ response := session.Send(step.Prompt)
 2. **Clean context** — No cross-contamination between steps
 3. **Parallel execution** — Independent sessions can run concurrently
 4. **Audit clarity** — Each step has isolated transcript
+5. **BYOK support** — Each session can route to a custom provider
 
 ### Tool Exposure
 
-Tools are exposed to the SDK session:
+Tools are configured on the SDK session:
 
 ```go
-session.EnableTools(step.Tools)  // e.g., ["grep", "read_file"]
+config.AvailableTools = step.Tools  // e.g., ["grep", "read_file"]
 ```
 
-The SDK handles tool calls with the Copilot CLI.
+The underlying Copilot CLI runtime handles tool execution regardless of which executor
+backend is used.
 
 ---
 

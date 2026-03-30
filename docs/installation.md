@@ -6,6 +6,9 @@
 - macOS, Linux, or WSL
 - Copilot CLI for real (non-mock) runs
 
+!!! info "Copilot SDK is built in"
+    The Copilot SDK (`github.com/github/copilot-sdk/go`) is a Go library compiled into the `goflow` binary. You do **not** need to install it separately. The only external runtime dependency is the Copilot CLI.
+
 ## Option 1: Build from source
 
 ```bash
@@ -44,7 +47,8 @@ If a tap or bucket is configured for your org, install using your standard packa
 
 ## Copilot CLI setup
 
-Real runs call the Copilot CLI backend. Confirm availability:
+Real runs use the Copilot SDK executor, which manages the Copilot CLI automatically.
+The CLI binary must be available on your system:
 
 ```bash
 which copilot
@@ -52,6 +56,12 @@ copilot --version
 ```
 
 If unavailable, use `--mock` while developing workflow logic.
+
+To use the legacy CLI subprocess executor instead of the SDK, pass `--cli`:
+
+```bash
+goflow run --workflow my-workflow.yaml --cli
+```
 
 ## Common install checks
 

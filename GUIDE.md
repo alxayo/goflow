@@ -97,7 +97,7 @@ This guide walks you through the system progressively:
 | Requirement | Notes |
 |---|---|
 | **Go 1.21+** | [Install Go](https://go.dev/doc/install) |
-| **Copilot CLI** | Must be on `$PATH` or at `~/.copilot/copilot`. Not needed for `--mock` mode. |
+| **Copilot CLI** | Must be on `$PATH` or at `~/.copilot/copilot`. Not needed for `--mock` mode. The Copilot SDK is compiled into the `goflow` binary — no separate SDK install required. |
 | **macOS, Linux, or WSL** | Copilot CLI availability may vary |
 
 ### Build from Source
@@ -114,7 +114,7 @@ This produces a `goflow` binary in the current directory. Verify it works:
 # Expected: usage output
 ```
 
-### Verify Copilot CLI (Optional for Real Runs)
+### Verify Copilot CLI (Required for Real Runs)
 
 ```bash
 which copilot
@@ -161,7 +161,7 @@ output:
 
 ### 3.2 Running the Workflow
 
-Run it with the Copilot CLI (real LLM):
+Run it with the Copilot SDK executor (real LLM):
 
 ```bash
 ./goflow run --workflow my-first-workflow.yaml --verbose
@@ -813,7 +813,7 @@ When a step executes, models are tried in this order:
 1. Step-level model       (highest priority)
 2. Agent-level model(s)   (in order, if a list)
 3. Workflow config.model  (lowest explicit priority)
-4. Copilot CLI default    (if all above are unavailable)
+4. Copilot CLI default    (SDK/CLI runtime fallback)
 ```
 
 **Example resolution:**

@@ -125,7 +125,7 @@ Defined in `pkg/workflow/types.go` and defaulted in `pkg/workflow/parser.go`.
 | `shared_memory.inject_into_prompt` | Parsed only in CLI path | No automatic prompt injection currently happens in `goflow run` |
 | `shared_memory.initial_content` | Parsed only in CLI path | The memory manager supports initial content, but the CLI does not wire it in |
 | `shared_memory.initial_file` | Parsed only | Declared in types, but not consumed in the current runtime |
-| `provider` | Parsed only | Stored in config, but not used by `goflow run` or the Copilot CLI executor |
+| `provider` | Yes (SDK executor) | Used by the SDK executor for BYOK routing. Ignored when running with `--cli` fallback |
 | `streaming` | Parsed only | Stored in config, but not used by the current executor |
 
 ### Defaults that are applied automatically
@@ -168,7 +168,7 @@ agents:
 |---|---|---|
 | `description` | Yes | Stored on the resolved agent |
 | `prompt` | Yes | Becomes the step session system prompt |
-| `tools` | Yes | Passed through to the Copilot CLI as `--available-tools` when non-empty |
+| `tools` | Yes | Passed to the executor as the available-tools list (SDK: `SessionConfig.AvailableTools`; CLI: `--available-tools` flag) when non-empty |
 | `model` | Yes | Added as the agent-level model preference |
 
 ---
@@ -190,7 +190,7 @@ Defined in `pkg/workflow/types.go`, validated in `pkg/workflow/parser.go`, and e
 | `condition.not_contains` | Yes | Executes step only if referenced output does not contain the substring |
 | `condition.equals` | Yes | Executes step only if trimmed output equals trimmed configured value |
 | `model` | Yes | Step-level highest-priority model override |
-| `extra_dirs` | Yes | Passed to the Copilot CLI as repeated `--add-dir` arguments |
+| `extra_dirs` | Yes | Passed to the executor as additional context directories (SDK: `SessionConfig.SkillDirectories`; CLI: `--add-dir` flag) |
 | `interactive` | Yes | Per-step override. `nil` means inherit workflow-level `config.interactive` |
 
 ### Parsed but not used in the current runtime path
@@ -298,7 +298,7 @@ Parsed in `pkg/agents/loader.go` and represented in `pkg/agents/types.go`.
 |---|---|---|
 | `name` | Yes | Agent identity. Defaults to filename stem if omitted |
 | `description` | Yes | Stored on the resolved agent |
-| `tools` | Yes | Used to restrict Copilot CLI tools when non-empty |
+| `tools` | Yes | Used to restrict executor tools when non-empty (SDK: `SessionConfig.AvailableTools`; CLI: `--available-tools`) |
 | `model` | Yes | Accepts a string or list of strings. Used as ordered model preferences |
 | Markdown body | Yes | Becomes the system prompt |
 | `SourceFile` | Yes | Stored for audit metadata |

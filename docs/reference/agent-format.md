@@ -38,7 +38,7 @@ Parsed in `pkg/agents/loader.go`.
 |---|---|
 | `name` | Agent identity. If omitted, defaults to the file stem |
 | `description` | Stored on the resolved agent |
-| `tools` | Restricts the tool list passed to the Copilot CLI when non-empty |
+| `tools` | Restricts the tool list passed to the executor when non-empty (SDK: `SessionConfig.AvailableTools`; CLI: `--available-tools` flag) |
 | `model` | Accepts a string or list. Used as ordered model preference list |
 | Markdown body | Becomes the session system prompt |
 
@@ -79,7 +79,7 @@ These fields are useful for compatibility and future expansion, but they should 
 
 ## Tool Behavior
 
-If `tools` is non-empty, the executor passes them to the Copilot CLI as a restricted available-tools list.
+If `tools` is non-empty, the executor passes them as a restricted available-tools list. The SDK executor sets `SessionConfig.AvailableTools`; the CLI executor passes `--available-tools` on the command line.
 
 If `tools` is empty or omitted, the executor allows all tools through the CLI default path.
 

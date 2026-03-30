@@ -58,7 +58,7 @@ It is based on the current Go source code, not on planned roadmap behavior. If a
 | `log_level` | Partially implemented | Defaulted to `info`, but not used to alter logger behavior |
 | `max_concurrency` | Partially implemented | Used only by `RunParallel()`, not by current CLI path |
 | `shared_memory.*` | Parsed only in CLI path | Types exist, runtime wiring is not automatic yet |
-| `provider` | Parsed only | Not used by current executor |
+| `provider` | Yes (SDK executor) | Used by the SDK executor for BYOK routing. Ignored when running with `--cli` |
 | `streaming` | Parsed only | Not used by current executor |
 
 ## `steps` Fields
@@ -71,7 +71,7 @@ It is based on the current Go source code, not on planned roadmap behavior. If a
 | `depends_on` | Implemented | Used in DAG construction |
 | `condition` | Implemented | Supports `contains`, `not_contains`, `equals` |
 | `model` | Implemented | Highest-priority model override |
-| `extra_dirs` | Implemented | Passed to Copilot CLI as `--add-dir` |
+| `extra_dirs` | Implemented | Passed to the executor (SDK: `SessionConfig.SkillDirectories`; CLI: `--add-dir`) |
 | `interactive` | Implemented | Per-step override for interaction |
 | `skills` | Parsed only | Not consumed by runtime |
 | `on_error` | Parsed only | No error-policy engine yet |

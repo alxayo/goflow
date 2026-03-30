@@ -116,10 +116,9 @@ Model availability depends on your Copilot plan and region. Each model consumes 
 
 ## BYOK (Bring Your Own Key)
 
-!!! warning "Planned Feature — Not Yet Active"
-    The BYOK provider configuration is **parsed from workflow YAML** but is **not yet wired into the runtime**. The fields below are reserved for future implementation. Currently, all model execution goes through Copilot CLI's built-in model routing.
+goflow supports Bring Your Own Key (BYOK) — use your own API keys for OpenAI, Anthropic, Azure, or Ollama instead of relying on GitHub Copilot's built-in model routing. When BYOK is configured, LLM inference requests are routed to your provider while all CLI built-in tools (grep, view, semantic_search, etc.) remain fully available.
 
-goflow's workflow schema includes a `config.provider` section for future BYOK support:
+To enable BYOK, add a `config.provider` section to your workflow YAML:
 
 ```yaml
 config:
@@ -137,9 +136,9 @@ config:
 | `base_url` | string | API endpoint URL |
 | `api_key_env` | string | Name of the environment variable holding the API key |
 
-### Planned: Ollama / Local LLMs
+### Ollama / Local LLMs
 
-When BYOK is implemented, the intended configuration for local models would be:
+Local models via Ollama work without an API key:
 
 ```yaml
 config:
@@ -150,7 +149,7 @@ config:
     api_key_env: ""              # Ollama doesn't require an API key
 ```
 
-### Planned: External Providers
+### External Providers
 
 ```yaml
 config:
@@ -172,11 +171,26 @@ config:
 
 ### Current Workaround
 
-Until BYOK is active in goflow, you can configure model selection through Copilot CLI itself:
+Even without BYOK, you can configure model selection through Copilot CLI itself:
 
 1. **Use `--model` flag** — goflow passes the model name from the workflow/agent/step to Copilot CLI via `--model`
 2. **Model fallback chains** — Define multiple models in the agent file; goflow tries each in order
 3. **Copilot CLI configuration** — Configure default model preferences in `~/.copilot/config.json`
+4. **`--cli` flag** — Use `goflow run --cli` to force the legacy CLI subprocess executor (no BYOK)
+
+---
+
+## Executor Backends
+
+goflow uses two executor backends, both powered by the Copilot CLI runtime:
+
+| Backend | When Used | BYOK | Streaming | Session Resume |
+|---|---|---|---|---|
+| **SDK Executor** (default) | No flags or `config.provider` set | Yes | Yes | Yes |
+| **CLI Executor** (`--cli`) | `--cli` flag | No | No | No |
+| **Mock Executor** (`--mock`) | `--mock` flag | N/A | N/A | N/A |
+
+The SDK executor wraps the CLI via JSON-RPC. All built-in tools remain available regardless of backend choice. Without `config.provider`, the SDK executor uses GitHub Models (same as the CLI executor did before).
 
 ---
 
@@ -186,8 +200,8 @@ The model selection logic lives in `pkg/executor/executor.go`. During step execu
 
 1. The executor collects models from step, agent, and workflow config
 2. Duplicates are removed (preserving priority order)
-3. Each model is tried via `--model MODEL_NAME` on the Copilot CLI invocation
-4. If a model returns an unavailability error, the next model is tried
-5. If all specified models fail, the CLI runs without `--model` (using its default)
+3. With the SDK executor: each model is tried via the SDK's session creation; if unavailable, the next is attempted
+4. With the CLI executor (`--cli`): each model is tried via `--model MODEL_NAME` on the Copilot CLI invocation
+5. If all specified models fail, the default model is used
 
-The `ProviderConfig` struct in `pkg/workflow/types.go` is parsed from YAML but not yet consumed by the executor.
+The `ProviderConfig` struct in `pkg/workflow/types.go` is parsed from YAML and consumed by the SDK executor in `pkg/executor/copilot_sdk.go`. When `config.provider` is set, the provider is passed to the Copilot SDK's session configuration for BYOK routing.

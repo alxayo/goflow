@@ -196,6 +196,7 @@ Error: condition references unknown step: 'check'
    ```bash
    which copilot
    # If empty, install Copilot CLI
+   # The SDK executor manages the CLI automatically, but the binary must be on PATH
    ```
 
 2. **Not authenticated**
@@ -205,6 +206,12 @@ Error: condition references unknown step: 'check'
 
 3. **Model not available**
    — Check if the specified model is accessible to your account
+
+4. **Try the CLI fallback**
+   — If the SDK executor has issues, run with `--cli` to use the legacy subprocess executor:
+   ```bash
+   goflow run --workflow my-workflow.yaml --cli
+   ```
 
 ---
 
