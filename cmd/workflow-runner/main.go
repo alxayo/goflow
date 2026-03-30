@@ -276,7 +276,7 @@ func runCommand(args []string, stdout, stderr io.Writer) int {
 
 	startTime := time.Now()
 	ctx := context.Background()
-	results, runErr := orch.Run(ctx, wf)
+	results, runErr := orch.RunParallel(ctx, wf)
 	elapsed := time.Since(startTime)
 
 	// 12. Print step statuses in verbose mode.

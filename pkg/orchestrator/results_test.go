@@ -36,7 +36,7 @@ func TestGetMissing(t *testing.T) {
 	}
 }
 
-func TestOutputMapOnlyCompleted(t *testing.T) {
+func TestOutputMapCompletedSkippedAndFailed(t *testing.T) {
 	store := NewResultsStore()
 	store.Store("completed", &workflow.StepResult{
 		StepID: "completed",
@@ -59,14 +59,17 @@ func TestOutputMapOnlyCompleted(t *testing.T) {
 	})
 
 	out := store.OutputMap()
-	if len(out) != 2 {
-		t.Fatalf("expected 2 entries in OutputMap (completed + skipped), got %d", len(out))
+	if len(out) != 3 {
+		t.Fatalf("expected 3 entries in OutputMap (completed + skipped + failed), got %d", len(out))
 	}
 	if out["completed"] != "result-c" {
 		t.Errorf("completed output = %q, want %q", out["completed"], "result-c")
 	}
 	if out["skipped"] != "" {
 		t.Errorf("skipped output = %q, want empty string", out["skipped"])
+	}
+	if out["failed"] != "" {
+		t.Errorf("failed output = %q, want empty string", out["failed"])
 	}
 }
 

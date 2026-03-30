@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	"github.com/alex-workflow-runner/workflow-runner/pkg/agents"
@@ -220,6 +221,45 @@ func TestExecute_SDKSendFailure(t *testing.T) {
 	}
 }
 
+func TestExecute_RetryCountTransientTimeoutSucceeds(t *testing.T) {
+	exec := &StepExecutor{SDK: &flakyTimeoutExecutor{failuresLeft: 1}}
+	step := workflow.Step{
+		ID:         "retry-step",
+		Agent:      "test-agent",
+		Prompt:     "Do something",
+		RetryCount: 1,
+	}
+
+	result, err := exec.Execute(context.Background(), step, testAgent(), nil, nil, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Status != workflow.StepStatusCompleted {
+		t.Errorf("want status=completed, got %s", result.Status)
+	}
+}
+
+func TestExecute_RetryCountExhaustedFails(t *testing.T) {
+	exec := &StepExecutor{SDK: &flakyTimeoutExecutor{failuresLeft: 2}}
+	step := workflow.Step{
+		ID:         "retry-step",
+		Agent:      "test-agent",
+		Prompt:     "Do something",
+		RetryCount: 1,
+	}
+
+	result, err := exec.Execute(context.Background(), step, testAgent(), nil, nil, 1)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if result.Status != workflow.StepStatusFailed {
+		t.Errorf("want status=failed, got %s", result.Status)
+	}
+	if result.ErrorMsg == "" {
+		t.Error("expected non-empty error message")
+	}
+}
+
 func TestExecute_AuditFilesWritten(t *testing.T) {
 	tmpDir := t.TempDir()
 	runLogger, err := audit.NewRunLogger(tmpDir, "test-workflow")
@@ -271,6 +311,42 @@ func TestExecute_AuditFilesWritten(t *testing.T) {
 	if _, err := os.Stat(metaPath); os.IsNotExist(err) {
 		t.Error("step.meta.json not created")
 	}
+}
+
+type flakyTimeoutExecutor struct {
+	failuresLeft int32
+}
+
+func (f *flakyTimeoutExecutor) CreateSession(ctx context.Context, cfg SessionConfig) (Session, error) {
+	_ = ctx
+	_ = cfg
+	return &flakyTimeoutSession{executor: f}, nil
+}
+
+type flakyTimeoutSession struct {
+	executor *flakyTimeoutExecutor
+}
+
+func (s *flakyTimeoutSession) Send(ctx context.Context, prompt string) (string, error) {
+	_ = ctx
+	_ = prompt
+	for {
+		left := atomic.LoadInt32(&s.executor.failuresLeft)
+		if left <= 0 {
+			return "recovered output", nil
+		}
+		if atomic.CompareAndSwapInt32(&s.executor.failuresLeft, left, left-1) {
+			return "", errors.New("SDK session send: waiting for session.idle: context deadline exceeded")
+		}
+	}
+}
+
+func (s *flakyTimeoutSession) SessionID() string {
+	return "flaky-session"
+}
+
+func (s *flakyTimeoutSession) Close() error {
+	return nil
 }
 
 func TestExecute_NoAuditLogger(t *testing.T) {

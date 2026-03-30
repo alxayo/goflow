@@ -5,7 +5,9 @@ package executor
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/alex-workflow-runner/workflow-runner/pkg/agents"
@@ -97,24 +99,66 @@ func (se *StepExecutor) Execute(
 	}
 
 	// 5. Create SDK session.
-	session, err := se.SDK.CreateSession(ctx, sessionCfg)
-	if err != nil {
-		result.Status = workflow.StepStatusFailed
-		result.Error = err
-		result.ErrorMsg = err.Error()
-		result.EndedAt = time.Now().UTC().Format(time.RFC3339)
-		if stepLogger != nil {
-			se.writeFailedAudit(stepLogger, step, agent, result, startedAt)
-		}
-		return result, fmt.Errorf("creating session for step %q: %w", step.ID, err)
+	attempts := step.RetryCount + 1
+	if attempts < 1 {
+		attempts = 1
 	}
-	defer session.Close()
 
-	result.SessionID = session.SessionID()
+	var output string
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		session, err := se.SDK.CreateSession(ctx, sessionCfg)
+		if err != nil {
+			lastErr = err
+			if attempt < attempts && isTransientSDKTimeoutError(err) {
+				if !sleepWithContext(ctx, retryBackoff(attempt)) {
+					break
+				}
+				continue
+			}
 
-	// 6. Send resolved prompt and get output.
-	output, err := session.Send(ctx, resolvedPrompt)
-	if err != nil {
+			result.Status = workflow.StepStatusFailed
+			result.Error = err
+			result.ErrorMsg = err.Error()
+			result.EndedAt = time.Now().UTC().Format(time.RFC3339)
+			if stepLogger != nil {
+				se.writeFailedAudit(stepLogger, step, agent, result, startedAt)
+			}
+			return result, fmt.Errorf("creating session for step %q: %w", step.ID, err)
+		}
+
+		result.SessionID = session.SessionID()
+
+		output, err = session.Send(ctx, resolvedPrompt)
+		_ = session.Close()
+		if err != nil {
+			lastErr = err
+			if attempt < attempts && isTransientSDKTimeoutError(err) {
+				if !sleepWithContext(ctx, retryBackoff(attempt)) {
+					break
+				}
+				continue
+			}
+
+			result.Status = workflow.StepStatusFailed
+			result.Error = err
+			result.ErrorMsg = err.Error()
+			result.EndedAt = time.Now().UTC().Format(time.RFC3339)
+			if stepLogger != nil {
+				se.writeFailedAudit(stepLogger, step, agent, result, startedAt)
+			}
+			return result, fmt.Errorf("executing step %q: %w", step.ID, err)
+		}
+
+		// Successful send ends retry loop.
+		break
+	}
+
+	if output == "" {
+		err := lastErr
+		if err == nil {
+			err = errors.New("step execution failed after retries")
+		}
 		result.Status = workflow.StepStatusFailed
 		result.Error = err
 		result.ErrorMsg = err.Error()
@@ -263,4 +307,41 @@ func dedupeStrings(input []string) []string {
 		}
 	}
 	return result
+}
+
+// isTransientSDKTimeoutError returns true for timeout-style SDK errors that
+// are typically transient and safe to retry.
+func isTransientSDKTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "context deadline exceeded") ||
+		strings.Contains(msg, "waiting for session.idle") ||
+		strings.Contains(msg, "timeout")
+}
+
+func retryBackoff(attempt int) time.Duration {
+	if attempt < 1 {
+		attempt = 1
+	}
+	// Short linear backoff to avoid immediately hammering the backend.
+	return time.Duration(attempt) * 500 * time.Millisecond
+}
+
+func sleepWithContext(ctx context.Context, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
+	}
 }

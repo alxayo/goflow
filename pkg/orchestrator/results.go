@@ -50,6 +50,10 @@ func (rs *ResultsStore) OutputMap() map[string]string {
 			// {{steps.X.output}} references resolve to "" rather
 			// than failing with "unknown step".
 			out[id] = ""
+		} else if r.Status == workflow.StepStatusFailed {
+			// Failed steps also resolve to empty output in parallel mode
+			// so fan-in steps can run in best-effort mode.
+			out[id] = ""
 		}
 	}
 	return out

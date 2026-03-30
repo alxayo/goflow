@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/alex-workflow-runner/workflow-runner/pkg/agents"
 	"github.com/alex-workflow-runner/workflow-runner/pkg/executor"
@@ -100,6 +101,8 @@ func (o *Orchestrator) RunParallel(ctx context.Context, wf *workflow.Workflow) (
 	sem := NewSemaphore(o.MaxConcurrency)
 
 	for _, level := range levels {
+		bestEffortLevel := len(level.Steps) > 1
+
 		// Separate interactive and non-interactive steps. Interactive steps
 		// are run sequentially after the parallel batch to avoid interleaved
 		// user prompts on the terminal.
@@ -122,7 +125,8 @@ func (o *Orchestrator) RunParallel(ctx context.Context, wf *workflow.Workflow) (
 		// Phase 1: Run non-interactive steps in parallel.
 		if len(parallelSteps) > 0 {
 			var wg sync.WaitGroup
-			errCh := make(chan error, len(parallelSteps))
+			var levelErrMu sync.Mutex
+			var levelErrs []error
 
 			for _, step := range parallelSteps {
 				wg.Add(1)
@@ -133,7 +137,11 @@ func (o *Orchestrator) RunParallel(ctx context.Context, wf *workflow.Workflow) (
 
 					agent, ok := o.Agents[s.Agent]
 					if !ok {
-						errCh <- fmt.Errorf("step %q: agent %q not found", s.ID, s.Agent)
+						err := fmt.Errorf("step %q: agent %q not found", s.ID, s.Agent)
+						store.Store(s.ID, failedStepResult(s.ID, err))
+						levelErrMu.Lock()
+						levelErrs = append(levelErrs, err)
+						levelErrMu.Unlock()
 						return
 					}
 
@@ -150,8 +158,12 @@ func (o *Orchestrator) RunParallel(ctx context.Context, wf *workflow.Workflow) (
 					if err != nil {
 						if result != nil {
 							store.Store(s.ID, result)
+						} else {
+							store.Store(s.ID, failedStepResult(s.ID, err))
 						}
-						errCh <- fmt.Errorf("step %q: %w", s.ID, err)
+						levelErrMu.Lock()
+						levelErrs = append(levelErrs, err)
+						levelErrMu.Unlock()
 						return
 					}
 					store.Store(s.ID, result)
@@ -159,11 +171,8 @@ func (o *Orchestrator) RunParallel(ctx context.Context, wf *workflow.Workflow) (
 			}
 
 			wg.Wait()
-			close(errCh)
-
-			// Fail fast: return on first error from this level.
-			for err := range errCh {
-				return store.All(), err
+			if !bestEffortLevel && len(levelErrs) > 0 {
+				return store.All(), levelErrs[0]
 			}
 		}
 
@@ -172,7 +181,12 @@ func (o *Orchestrator) RunParallel(ctx context.Context, wf *workflow.Workflow) (
 		for _, step := range interactiveSteps {
 			agent, ok := o.Agents[step.Agent]
 			if !ok {
-				return store.All(), fmt.Errorf("step %q: agent %q not found", step.ID, step.Agent)
+				err := fmt.Errorf("step %q: agent %q not found", step.ID, step.Agent)
+				store.Store(step.ID, failedStepResult(step.ID, err))
+				if !bestEffortLevel {
+					return store.All(), err
+				}
+				continue
 			}
 
 			o.Executor.Interactive = true
@@ -184,12 +198,29 @@ func (o *Orchestrator) RunParallel(ctx context.Context, wf *workflow.Workflow) (
 			if err != nil {
 				if result != nil {
 					store.Store(step.ID, result)
+				} else {
+					store.Store(step.ID, failedStepResult(step.ID, err))
 				}
-				return store.All(), fmt.Errorf("step %q: %w", step.ID, err)
+				if !bestEffortLevel {
+					return store.All(), err
+				}
+				continue
 			}
 			store.Store(step.ID, result)
 		}
 	}
 
 	return store.All(), nil
+}
+
+func failedStepResult(stepID string, err error) *workflow.StepResult {
+	now := time.Now().UTC().Format(time.RFC3339)
+	return &workflow.StepResult{
+		StepID:    stepID,
+		Status:    workflow.StepStatusFailed,
+		Error:     err,
+		ErrorMsg:  err.Error(),
+		StartedAt: now,
+		EndedAt:   now,
+	}
 }
