@@ -487,7 +487,7 @@ The translator builds the agent's `tools:` list from the gh-aw `tools:` configur
 
 | gh-aw tool | Agent tool entry | Notes |
 |---|---|---|
-| `tools.github:` (any config) | Add `github` to tools list. Emit GitHub MCP server config if toolsets beyond default are needed | See §5.5.1 |
+| `tools.github:` (any config) | Add `github` to tools list | GitHub tools (issues, PRs, repos, etc.) are built into the Copilot CLI. No separate MCP server setup is needed. See §5.5.1 |
 | `tools.edit:` | `edit` | Direct |
 | `tools.web-fetch:` | `web-fetch` | Direct |
 | `tools.web-search:` | `web-search` | Direct |
@@ -500,29 +500,17 @@ The translator builds the agent's `tools:` list from the gh-aw `tools:` configur
 
 #### 5.5.1 GitHub MCP Server Configuration
 
-When `tools.github:` is present, the translator documents the GitHub MCP server requirement in `TRANSLATION_NOTES.md` and emits a `.copilot/mcp.json` workspace config file in the output directory:
+The GitHub MCP server (issues, PRs, repos, discussions, labels, etc.) is **built into the Copilot CLI** that goflow uses as its execution backend. When `tools.github:` is present in the gh-aw workflow, the translator simply adds `github` to the agent's `tools:` list. No separate MCP server installation, `.copilot/mcp.json` configuration, or environment setup is required for GitHub tools — they are natively available when goflow executes a step via the Copilot CLI.
 
-```json
-{
-  "servers": {
-    "github": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github"],
-      "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
-      }
-    }
-  }
-}
-```
+The agent declares `github` in its tools list, and goflow passes it to the Copilot CLI via `--available-tools github,...`, which activates the built-in GitHub toolset.
 
-**Important:** MCP servers are NOT placed in agent `.agent.md` files. goflow's executor does not read `mcp-servers` from agent files into the session config. MCP servers are discovered by the Copilot CLI via workspace configuration (`.copilot/mcp.json`) or via the step's `extra_dirs` field pointing to a directory containing the appropriate config.
-
-If `tools.github.toolsets` specifies non-default toolsets, a comment is emitted documenting which toolsets were requested.
+If `tools.github.toolsets` specifies non-default toolsets (e.g., `code_security`, `discussions`, `projects`), a comment is emitted in the translation notes documenting which toolsets were requested. The Copilot CLI may or may not support all gh-aw toolsets — unsupported ones are noted as warnings.
 
 ### 5.6 MCP Server Mapping
 
-gh-aw `mcp-servers:` entries are emitted into the `.copilot/mcp.json` workspace config alongside the GitHub MCP server. They are NOT placed in agent files.
+gh-aw `mcp-servers:` entries define **custom** (non-GitHub) MCP servers. These are emitted into a `.copilot/mcp.json` workspace config file in the output directory so the Copilot CLI can discover them. They are NOT placed in agent files (goflow's executor does not read `mcp-servers` from agent files).
+
+**Note:** The GitHub MCP server does NOT need an entry here — it is built into the Copilot CLI (see §5.5.1). Only custom servers from the gh-aw `mcp-servers:` block are emitted.
 
 | gh-aw MCP type | Output location | Rule |
 |---|---|---|
@@ -530,6 +518,8 @@ gh-aw `mcp-servers:` entries are emitted into the `.copilot/mcp.json` workspace 
 | HTTP server (`type: http`, `url:`) | — | Emit warning: HTTP MCP servers require Copilot CLI support; document URL |
 | Servers with `allowed:` filter | `.copilot/mcp.json` + note `allowed:` in translation notes | goflow does not enforce tool allowlists |
 | Servers with `env:` using secrets | `.copilot/mcp.json`, replace `${{ secrets.X }}` with `${X}` env var reference | User must set env vars |
+
+If the gh-aw workflow has no custom `mcp-servers:` (only `tools.github:`), no `.copilot/mcp.json` is emitted.
 
 ### 5.7 MCP Scripts Translation
 
@@ -875,7 +865,7 @@ A single integration test runs the full translator against the sample gh-aw file
 | Input generator | T06 | Build `inputs:` map from discovered expressions | T05 |
 | Tool mapper | T07 | Convert `tools:` to agent tools list per §5.5 | T03 |
 | Engine mapper | T08 | Convert `engine:` to goflow config per §5.2 | T03 |
-| MCP mapper | T09 | Convert `mcp-servers:` to `.copilot/mcp.json` per §5.6 | T03 |
+| MCP mapper | T09 | Convert custom `mcp-servers:` to `.copilot/mcp.json` per §5.6 (GitHub tools are built-in, no config needed) | T03 |
 | Safe-output mapper | T10 | Convert each safe-output type to prompt instructions per §5.8 | T03 |
 | Workflow emitter | T11 | Generate goflow `.yaml` file | T05, T07, T08, T10 |
 | Agent emitter | T12 | Generate `.agent.md` file | T07, T09 |
