@@ -4,12 +4,6 @@ description: "Agent for perf-worker step in orchestrator-pipeline (translated fr
 tools:
   - github
   - bash
-mcp-servers:
-  github:
-    command: npx
-    args: ["-y", "@modelcontextprotocol/server-github"]
-    env:
-      GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
 ---
 
 You are a performance review agent.

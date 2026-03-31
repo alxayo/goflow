@@ -371,7 +371,7 @@ output:
 
 ### 4.2 Agent .agent.md Files
 
-For each translated workflow, the emitter generates a `.agent.md` file:
+For each translated workflow, the emitter generates a `.agent.md` file containing only the agent's name, description, tools list, and system prompt. **MCP server configuration is NOT included in agent files** — goflow's executor does not read `mcp-servers` from agent files. MCP servers are configured via `.copilot/mcp.json` in the workspace (see §5.5.1 and §5.6).
 
 ```markdown
 ---
@@ -382,10 +382,6 @@ tools:
   - edit
   - web-fetch
   - bash
-mcp-servers:
-  custom-tool:
-    command: node
-    args: ["./mcp-server.js"]
 ---
 
 You are an AI agent translated from a GitHub Agentic Workflow.
@@ -504,29 +500,36 @@ The translator builds the agent's `tools:` list from the gh-aw `tools:` configur
 
 #### 5.5.1 GitHub MCP Server Configuration
 
-When `tools.github:` is present, the translator adds a GitHub MCP server to the generated agent file:
+When `tools.github:` is present, the translator documents the GitHub MCP server requirement in `TRANSLATION_NOTES.md` and emits a `.copilot/mcp.json` workspace config file in the output directory:
 
-```yaml
-mcp-servers:
-  github:
-    command: npx
-    args: ["-y", "@modelcontextprotocol/server-github"]
-    env:
-      GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
+```json
+{
+  "servers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+      }
+    }
+  }
+}
 ```
+
+**Important:** MCP servers are NOT placed in agent `.agent.md` files. goflow's executor does not read `mcp-servers` from agent files into the session config. MCP servers are discovered by the Copilot CLI via workspace configuration (`.copilot/mcp.json`) or via the step's `extra_dirs` field pointing to a directory containing the appropriate config.
 
 If `tools.github.toolsets` specifies non-default toolsets, a comment is emitted documenting which toolsets were requested.
 
 ### 5.6 MCP Server Mapping
 
-`mcp-servers:` entries in gh-aw map directly to agent `mcp-servers:` in goflow.
+gh-aw `mcp-servers:` entries are emitted into the `.copilot/mcp.json` workspace config alongside the GitHub MCP server. They are NOT placed in agent files.
 
-| gh-aw MCP type | Agent config | Rule |
+| gh-aw MCP type | Output location | Rule |
 |---|---|---|
-| Stdio server (`command:` + `args:`) | Direct copy to agent `mcp-servers:` | 1:1 |
+| Stdio server (`command:` + `args:`) | `.copilot/mcp.json` `servers` entry | Direct mapping |
 | HTTP server (`type: http`, `url:`) | — | Emit warning: HTTP MCP servers require Copilot CLI support; document URL |
-| Servers with `allowed:` filter | Copy server, note `allowed:` as comment | goflow does not enforce tool allowlists |
-| Servers with `env:` using secrets | Copy, replace `${{ secrets.X }}` with `${X}` env var reference | User must set env vars |
+| Servers with `allowed:` filter | `.copilot/mcp.json` + note `allowed:` in translation notes | goflow does not enforce tool allowlists |
+| Servers with `env:` using secrets | `.copilot/mcp.json`, replace `${{ secrets.X }}` with `${X}` env var reference | User must set env vars |
 
 ### 5.7 MCP Scripts Translation
 
@@ -872,7 +875,7 @@ A single integration test runs the full translator against the sample gh-aw file
 | Input generator | T06 | Build `inputs:` map from discovered expressions | T05 |
 | Tool mapper | T07 | Convert `tools:` to agent tools list per §5.5 | T03 |
 | Engine mapper | T08 | Convert `engine:` to goflow config per §5.2 | T03 |
-| MCP mapper | T09 | Convert `mcp-servers:` per §5.6 | T03 |
+| MCP mapper | T09 | Convert `mcp-servers:` to `.copilot/mcp.json` per §5.6 | T03 |
 | Safe-output mapper | T10 | Convert each safe-output type to prompt instructions per §5.8 | T03 |
 | Workflow emitter | T11 | Generate goflow `.yaml` file | T05, T07, T08, T10 |
 | Agent emitter | T12 | Generate `.agent.md` file | T07, T09 |
@@ -1068,12 +1071,6 @@ description: "Agent for daily-status-report workflow (translated from gh-aw)"
 tools:
   - github
   - web-search
-mcp-servers:
-  github:
-    command: npx
-    args: ["-y", "@modelcontextprotocol/server-github"]
-    env:
-      GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_TOKEN}"
 ---
 
 You are an AI agent for generating daily status reports.
