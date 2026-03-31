@@ -1,0 +1,103 @@
+# Translated from: chain/orchestrator.md + chain/security-worker.md + chain/perf-worker.md
+# Connected workflows merged into a single goflow DAG.
+# Original triggers (not translated — run manually via goflow):
+#   orchestrator: on: workflow_dispatch
+#   security-worker: on: workflow_call
+#   perf-worker: on: workflow_call
+
+name: "orchestrator-pipeline"
+description: "Orchestrator with security and performance workers"
+
+inputs:
+  repository:
+    description: "Repository in owner/repo format (originally ${{ github.repository }})"
+
+config:
+  interactive: true
+
+agents:
+  orchestrator-agent:
+    file: "./agents/orchestrator-agent.agent.md"
+  security-worker-agent:
+    file: "./agents/security-worker-agent.agent.md"
+  perf-worker-agent:
+    file: "./agents/perf-worker-agent.agent.md"
+
+steps:
+  - id: orchestrator
+    agent: orchestrator-agent
+    prompt: |
+      # Orchestrator
+
+      Analyze repository {{inputs.repository}} and decide which review to run.
+
+      If the repository contains Go code, call the security-worker.
+      If the repository has performance-sensitive code, call the perf-worker.
+
+      ## Output Instructions (from safe-outputs)
+
+      NOTE: Worker dispatch is handled by the goflow DAG. Both workers will
+      run after this step completes. Describe your analysis and which workers
+      should be most relevant.
+    timeout: "20m"
+    interactive: true
+
+  - id: security-worker
+    agent: security-worker-agent
+    # This step can access {{steps.orchestrator.output}} if needed
+    prompt: |
+      # Security Worker
+
+      Perform a security review of the repository.
+
+      Orchestrator context: {{steps.orchestrator.output}}
+
+      Focus on:
+      - Dependency vulnerabilities
+      - Secret exposure risks
+      - Injection attack surfaces
+
+      ## Output Instructions (from safe-outputs)
+
+      When creating issues for findings:
+      - Use the GitHub MCP server create_issue tool
+      - Prefix issue titles with "[security] "
+      - Add labels: security, automated
+      - Create at most 3 issue(s)
+
+      Create issues for any findings with severity HIGH or CRITICAL.
+    depends_on: [orchestrator]
+    timeout: "15m"
+    interactive: true
+
+  - id: perf-worker
+    agent: perf-worker-agent
+    # This step can access {{steps.orchestrator.output}} if needed
+    prompt: |
+      # Performance Worker
+
+      Perform a performance review of the repository.
+
+      Orchestrator context: {{steps.orchestrator.output}}
+
+      Focus on:
+      - Hot paths and algorithmic complexity
+      - Memory allocation patterns
+      - Benchmark regressions
+
+      ## Output Instructions (from safe-outputs)
+
+      When creating issues for findings:
+      - Use the GitHub MCP server create_issue tool
+      - Prefix issue titles with "[perf] "
+      - Add labels: performance, automated
+      - Create at most 3 issue(s)
+
+      Create issues for any findings with measurable impact.
+    depends_on: [orchestrator]
+    timeout: "15m"
+    interactive: true
+
+output:
+  steps: [orchestrator, security-worker, perf-worker]
+  format: "markdown"

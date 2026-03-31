@@ -1,0 +1,66 @@
+# Translated from: issue-triage.md
+# Original triggers (not translated — run manually via goflow):
+#   on:
+#     issues:
+#       types: [opened, reopened]
+# Original permissions: contents: read, issues: read
+# Original engine.max-turns: 10
+
+name: "issue-triage-bot"
+description: "Issue Triage Bot"
+
+inputs:
+  issue_number:
+    description: "Issue number (originally ${{ github.event.issue.number }})"
+  repository:
+    description: "Repository in owner/repo format (originally ${{ github.repository }})"
+  actor:
+    description: "Triggering user (originally ${{ github.actor }})"
+
+config:
+  model: "gpt-5"
+  interactive: true
+
+agents:
+  triage-agent:
+    file: "./agents/triage-agent.agent.md"
+
+steps:
+  - id: triage
+    agent: triage-agent
+    prompt: |
+      # Issue Triage Bot
+
+      Analyze issue #{{inputs.issue_number}} in repository {{inputs.repository}}.
+
+      The issue was created by {{inputs.actor}}.
+
+      ## Your Tasks
+
+      1. Read the issue content using the GitHub tools
+      2. Categorize the issue type (bug, enhancement, question, documentation)
+      3. Add the appropriate label from the allowed list
+      4. Post a helpful triage comment with next steps
+
+      ## Guidelines
+
+      - Be concise and helpful
+      - If unsure about categorization, default to "question"
+      - Always cite the specific part of the issue that informed your decision
+
+      ## Output Instructions (from safe-outputs)
+
+      When adding labels:
+      - Use the GitHub MCP server add_labels tool
+      - Only use these labels: bug, enhancement, question, documentation
+      - Add at most 3 label(s)
+
+      When posting comments:
+      - Use the GitHub MCP server add_comment tool
+      - Post at most 1 comment(s)
+    timeout: "10m"
+    interactive: true
+
+output:
+  steps: [triage]
+  format: "markdown"

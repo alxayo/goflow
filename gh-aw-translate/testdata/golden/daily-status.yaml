@@ -1,0 +1,56 @@
+# Translated from: daily-status.md
+# Original triggers (not translated — run manually via goflow):
+#   on:
+#     schedule: daily on weekdays
+# Original permissions: contents: read, issues: read, pull-requests: read
+
+name: "daily-status-report"
+description: "Daily Status Report"
+
+inputs:
+  repository:
+    description: "Repository in owner/repo format (originally ${{ github.repository }})"
+
+config:
+  interactive: true
+
+agents:
+  daily-status-agent:
+    file: "./agents/daily-status-agent.agent.md"
+
+steps:
+  - id: generate-report
+    agent: daily-status-agent
+    prompt: |
+      # Daily Status Report
+
+      Create an upbeat daily status report for the team as a GitHub issue.
+
+      ## What to include
+
+      - Recent repository activity for {{inputs.repository}}
+        - Issues opened/closed in the last 24 hours
+        - PRs merged
+        - Notable commits to main branch
+      - Progress tracking and highlights
+      - Actionable next steps for maintainers
+
+      ## Style
+
+      Keep the tone positive and motivating. Use emoji sparingly but effectively.
+      Focus on what was accomplished, not just what's pending.
+
+      ## Output Instructions (from safe-outputs)
+
+      When creating the status report issue:
+      - Use the GitHub MCP server create_issue tool
+      - Prefix the issue title with "[team-status] "
+      - Add labels: report, daily-status
+      - Close older issues from this workflow before creating new ones
+      - Create at most 1 issue
+    timeout: "15m"
+    interactive: true
+
+output:
+  steps: [generate-report]
+  format: "markdown"
