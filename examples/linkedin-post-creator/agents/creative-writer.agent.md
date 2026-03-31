@@ -2,7 +2,10 @@
 name: creative-writer
 description: Writes an unconventional LinkedIn post with a fresh angle or unexpected format
 tools: []
-model: gpt-4.1
+model:
+   - gpt-5
+   - claude-sonnet-4.5
+   - gpt-4.1
 ---
 
 # Creative LinkedIn Post Writer

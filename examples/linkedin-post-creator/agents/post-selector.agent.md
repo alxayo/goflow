@@ -2,7 +2,9 @@
 name: post-selector
 description: Presents LinkedIn post drafts to the user and helps them pick, refine, and decide on an image
 tools: []
-model: gpt-4.1
+model:
+   - gpt-5
+   - gpt-4.1
 ---
 
 # LinkedIn Post Selector & Refiner

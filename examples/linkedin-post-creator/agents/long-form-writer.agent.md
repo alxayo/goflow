@@ -2,7 +2,10 @@
 name: long-form-writer
 description: Writes a long-form LinkedIn post (200-300 words) with storytelling and depth
 tools: []
-model: gpt-4.1
+model:
+   - claude-sonnet-4.5
+   - gpt-5
+   - gpt-4.1
 ---
 
 # Long-Form LinkedIn Post Writer

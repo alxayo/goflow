@@ -2,7 +2,9 @@
 name: short-form-writer
 description: Writes a short punchy LinkedIn post (80-120 words) optimized for engagement
 tools: []
-model: gpt-4.1
+model:
+   - gpt-4o
+   - gpt-4.1
 ---
 
 # Short-Form LinkedIn Post Writer

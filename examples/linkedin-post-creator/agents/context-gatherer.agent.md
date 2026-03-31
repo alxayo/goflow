@@ -2,7 +2,9 @@
 name: context-gatherer
 description: Interviews the user to collect ideas, resources, and goals for a LinkedIn post
 tools: []
-model: gpt-4.1
+model:
+   - gpt-5
+   - gpt-4.1
 ---
 
 # LinkedIn Post Context Gatherer

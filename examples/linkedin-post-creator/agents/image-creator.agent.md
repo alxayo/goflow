@@ -2,7 +2,9 @@
 name: image-creator
 description: Generates an image concept and prompt for a LinkedIn post
 tools: []
-model: gpt-4.1
+model:
+   - gpt-4o
+   - gpt-4.1
 ---
 
 # LinkedIn Post Image Creator

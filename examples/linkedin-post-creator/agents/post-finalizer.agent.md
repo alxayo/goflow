@@ -2,7 +2,9 @@
 name: post-finalizer
 description: Assembles the final LinkedIn post with all elements ready for publishing
 tools: []
-model: gpt-4.1
+model:
+   - gpt-5
+   - gpt-4.1
 ---
 
 # LinkedIn Post Finalizer
