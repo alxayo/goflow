@@ -115,6 +115,7 @@ nav:
       - Template Variables: reference/templates.md
       - Shared Memory: reference/shared-memory.md
       - Output Control: reference/output.md
+      - Advanced Usage: reference/advanced-usage.md
       - Architecture: reference/architecture.md
   - Examples:
       - Overview: examples/index.md
@@ -122,4 +123,8 @@ nav:
       - Code Review Pipeline: examples/code-review.md
       - Security Scan: examples/security-scan.md
       - Decision Helper: examples/decision-helper.md
+      - Global News Trends: examples/global-news-trends.md
+      - Guided Code Review: examples/guided-code-review.md
+  - Comparison: COMPARISON_GITHUB_AGENTIC_WORKFLOWS.md
   - Troubleshooting: troubleshooting.md
+  - Changelog: changelog.md

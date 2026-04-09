@@ -1,6 +1,8 @@
 # Quick Start
 
-See goflow in action in under 2 minutes. We'll run an existing example workflow.
+Get goflow up and running in under 5 minutes. We'll build the binary, run an example workflow, and inspect the audit trail.
+
+**Prerequisites:** [Go 1.21+](https://go.dev/dl/) installed. No API key needed — we'll use mock mode.
 
 ---
 
