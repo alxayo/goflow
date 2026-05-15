@@ -49,7 +49,12 @@ type ProviderConfig struct {
 // When provider is non-nil, the API key is resolved from the environment variable
 // named in provider.APIKeyEnv. It is never stored in the struct — only passed to
 // the SDK client at construction time.
-func NewCopilotSDKExecutor(provider *ProviderConfig) (*CopilotSDKExecutor, error) {
+//
+// workingDir sets the CLI process working directory and adds it to the file
+// access allowlist. extraDirs are additional directories added to the allowlist
+// (e.g. target directories from workflow inputs). If workingDir is empty, the
+// CLI inherits the current process CWD.
+func NewCopilotSDKExecutor(provider *ProviderConfig, workingDir string, extraDirs ...string) (*CopilotSDKExecutor, error) {
 	if provider != nil {
 		if provider.Type == "" {
 			return nil, errors.New("BYOK provider type is required (openai, anthropic, azure, ollama)")
@@ -65,9 +70,27 @@ func NewCopilotSDKExecutor(provider *ProviderConfig) (*CopilotSDKExecutor, error
 		}
 	}
 
-	// Create SDK client. AutoStart is true by default, so the CLI process
-	// is spawned automatically on first CreateSession call.
-	client := copilot.NewClient(nil)
+	// Build CLI args: add directories to the file access allowlist.
+	// NOTE: Do NOT pass --allow-all here. The SDK's OnPermissionRequest handler
+	// (ApproveAll) handles permission requests. Combining --allow-all with the
+	// SDK handler causes "unexpected user permission response" errors because
+	// the CLI auto-approves and doesn't expect a response from the SDK.
+	var cliArgs []string
+	if workingDir != "" {
+		cliArgs = append(cliArgs, "--add-dir", workingDir)
+	}
+	for _, d := range extraDirs {
+		cliArgs = append(cliArgs, "--add-dir", d)
+	}
+
+	// Create SDK client with CLI args and optional working directory.
+	opts := &copilot.ClientOptions{
+		CLIArgs: cliArgs,
+	}
+	if workingDir != "" {
+		opts.Cwd = workingDir
+	}
+	client := copilot.NewClient(opts)
 
 	// Start the client explicitly so we fail fast if the CLI is missing.
 	if err := client.Start(context.Background()); err != nil {
@@ -167,7 +190,7 @@ func (e *CopilotSDKExecutor) buildSessionConfig(cfg SessionConfig, model string)
 		mcpServers := make(map[string]copilot.MCPServerConfig, len(cfg.MCPServers))
 		for name, config := range cfg.MCPServers {
 			if m, ok := config.(map[string]interface{}); ok {
-				mcpServers[name] = copilot.MCPServerConfig(m)
+				mcpServers[name] = mcpServerConfigFromMap(m)
 			}
 		}
 		sdkCfg.MCPServers = mcpServers
@@ -177,6 +200,11 @@ func (e *CopilotSDKExecutor) buildSessionConfig(cfg SessionConfig, model string)
 	// this via SkillDirectories (which also triggers agent/MCP discovery).
 	if len(cfg.ExtraDirs) > 0 {
 		sdkCfg.SkillDirectories = cfg.ExtraDirs
+	}
+
+	// Working directory for the session — scopes tool filesystem access.
+	if cfg.WorkingDir != "" {
+		sdkCfg.WorkingDirectory = cfg.WorkingDir
 	}
 
 	// BYOK provider configuration.
@@ -309,6 +337,8 @@ func (s *CopilotSDKSession) Send(ctx context.Context, prompt string) (string, er
 }
 
 // handleSessionEvent processes SDK events and updates the monitor state.
+// In SDK v0.3.0, event.Data is an interface — use a type switch to access
+// per-event fields.
 func (s *CopilotSDKSession) handleSessionEvent(
 	event copilot.SessionEvent,
 	monitor *SessionMonitor,
@@ -316,96 +346,78 @@ func (s *CopilotSDKSession) handleSessionEvent(
 	sendErr *error,
 	doneCh chan struct{},
 ) {
-	switch event.Type {
-	case copilot.SessionEventTypeAssistantTurnStart:
+	switch d := event.Data.(type) {
+	case *copilot.PermissionRequestedData:
+		// Permission handled automatically by OnPermissionRequest (ApproveAll).
+		return
+
+	case *copilot.PermissionCompletedData:
+		// Permission resolved — no action needed.
+		_ = d
+		return
+
+	case *copilot.AssistantTurnStartData:
 		monitor.EmitTurnStart()
 
-	case copilot.SessionEventTypeAssistantTurnEnd:
+	case *copilot.AssistantTurnEndData:
 		monitor.EmitTurnEnd()
 
-	case copilot.SessionEventTypeAssistantMessage:
-		// Final assistant message - capture the full content
-		if event.Data.Content != nil {
-			*finalOutput = strings.TrimSpace(*event.Data.Content)
-		}
+	case *copilot.AssistantMessageData:
+		// Final assistant message — capture the full content.
+		*finalOutput = strings.TrimSpace(d.Content)
 
-	case copilot.SessionEventTypeAssistantMessageDelta:
-		// Streaming text delta
-		if event.Data.DeltaContent != nil {
-			monitor.AppendStreamedText(*event.Data.DeltaContent)
-		}
+	case *copilot.AssistantMessageDeltaData:
+		// Streaming text delta.
+		monitor.AppendStreamedText(d.DeltaContent)
 
-	case copilot.SessionEventTypeToolExecutionStart:
-		// Tool starting execution
-		toolName := ""
-		if event.Data.ToolName != nil {
-			toolName = *event.Data.ToolName
-		}
+	case *copilot.ToolExecutionStartData:
+		// Tool starting execution.
 		argsJSON := ""
-		if event.Data.Arguments != nil {
-			// Arguments is interface{}, marshal to string for logging
-			if argsBytes, err := marshalJSONSafe(event.Data.Arguments); err == nil {
+		if d.Arguments != nil {
+			if argsBytes, err := marshalJSONSafe(d.Arguments); err == nil {
 				argsJSON = string(argsBytes)
 			}
 		}
-		monitor.StartToolCall(toolName, argsJSON)
+		monitor.StartToolCall(d.ToolName, argsJSON)
 
-	case copilot.SessionEventTypeToolExecutionComplete:
-		// Tool finished execution
-		toolName := ""
-		if event.Data.ToolName != nil {
-			toolName = *event.Data.ToolName
-		}
+	case *copilot.ToolExecutionCompleteData:
+		// Tool finished execution.
 		result := ""
-		if event.Data.Result != nil && event.Data.Result.Content != nil {
-			result = *event.Data.Result.Content
+		if d.Result != nil {
+			result = d.Result.Content
 		}
-		monitor.CompleteToolCall(toolName, result, "completed")
+		monitor.CompleteToolCall(d.ToolCallID, result, "completed")
 
-	case copilot.SessionEventTypeSessionIdle:
-		// Session completed successfully
+	case *copilot.SessionIdleData:
+		// Session completed successfully.
 		monitor.EmitIdle()
 		safeClose(doneCh)
 
-	case copilot.SessionEventTypeSessionError:
-		// Session error occurred
-		errMsg := "unknown session error"
-		if event.Data.Message != nil {
-			errMsg = *event.Data.Message
-		}
-		monitor.SetError(errMsg)
-		*sendErr = fmt.Errorf("session error: %s", errMsg)
+	case *copilot.SessionErrorData:
+		// Session error occurred.
+		monitor.SetError(d.Message)
+		*sendErr = fmt.Errorf("session error: %s", d.Message)
 		safeClose(doneCh)
 
-	case copilot.SessionEventTypeSubagentStarted:
-		// Subagent delegation started
+	case *copilot.SubagentStartedData:
 		if s.cfg.OnProgress != nil {
-			agentName := ""
-			if event.Data.AgentName != nil {
-				agentName = *event.Data.AgentName
-			}
 			s.cfg.OnProgress(SessionEventInfo{
 				Type:      "subagent.started",
 				StepID:    s.cfg.StepID,
 				SessionID: s.session.SessionID,
 				Timestamp: event.Timestamp,
-				Data:      map[string]string{"agent": agentName},
+				Data:      map[string]string{"agent": d.AgentName},
 			})
 		}
 
-	case copilot.SessionEventTypeSubagentCompleted:
-		// Subagent delegation completed
+	case *copilot.SubagentCompletedData:
 		if s.cfg.OnProgress != nil {
-			agentName := ""
-			if event.Data.AgentName != nil {
-				agentName = *event.Data.AgentName
-			}
 			s.cfg.OnProgress(SessionEventInfo{
 				Type:      "subagent.completed",
 				StepID:    s.cfg.StepID,
 				SessionID: s.session.SessionID,
 				Timestamp: event.Timestamp,
-				Data:      map[string]string{"agent": agentName},
+				Data:      map[string]string{"agent": d.AgentName},
 			})
 		}
 	}
@@ -463,4 +475,63 @@ func isSDKModelUnavailable(err error) bool {
 	return strings.Contains(msg, "not available") ||
 		strings.Contains(msg, "model not found") ||
 		strings.Contains(msg, "does not exist")
+}
+
+// mcpServerConfigFromMap converts a raw map (from YAML parsing) into the
+// appropriate SDK MCPServerConfig interface implementation.
+func mcpServerConfigFromMap(m map[string]interface{}) copilot.MCPServerConfig {
+	serverType, _ := m["type"].(string)
+	if serverType == "http" || serverType == "sse" {
+		cfg := copilot.MCPHTTPServerConfig{}
+		if u, ok := m["url"].(string); ok {
+			cfg.URL = u
+		}
+		if tools, ok := m["tools"].([]interface{}); ok {
+			for _, t := range tools {
+				if s, ok := t.(string); ok {
+					cfg.Tools = append(cfg.Tools, s)
+				}
+			}
+		}
+		if headers, ok := m["headers"].(map[string]interface{}); ok {
+			cfg.Headers = make(map[string]string, len(headers))
+			for k, v := range headers {
+				if s, ok := v.(string); ok {
+					cfg.Headers[k] = s
+				}
+			}
+		}
+		return cfg
+	}
+	// Default: stdio MCP server.
+	cfg := copilot.MCPStdioServerConfig{}
+	if cmd, ok := m["command"].(string); ok {
+		cfg.Command = cmd
+	}
+	if args, ok := m["args"].([]interface{}); ok {
+		for _, a := range args {
+			if s, ok := a.(string); ok {
+				cfg.Args = append(cfg.Args, s)
+			}
+		}
+	}
+	if env, ok := m["env"].(map[string]interface{}); ok {
+		cfg.Env = make(map[string]string, len(env))
+		for k, v := range env {
+			if s, ok := v.(string); ok {
+				cfg.Env[k] = s
+			}
+		}
+	}
+	if cwd, ok := m["cwd"].(string); ok {
+		cfg.Cwd = cwd
+	}
+	if tools, ok := m["tools"].([]interface{}); ok {
+		for _, t := range tools {
+			if s, ok := t.(string); ok {
+				cfg.Tools = append(cfg.Tools, s)
+			}
+		}
+	}
+	return cfg
 }

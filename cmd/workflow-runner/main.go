@@ -206,6 +206,18 @@ func runCommand(args []string, stdout, stderr io.Writer) int {
 	}
 
 	// 8. Create executor.
+	// Collect directories that need file-system access: CWD + any input values
+	// that resolve to existing directories on disk.
+	cwd, _ := os.Getwd()
+	var extraDirs []string
+	for _, v := range mergedInputs {
+		if filepath.IsAbs(v) {
+			if info, err := os.Stat(v); err == nil && info.IsDir() {
+				extraDirs = append(extraDirs, v)
+			}
+		}
+	}
+
 	var sessionExecutor executor.SessionExecutor
 	if *useMock {
 		fmt.Fprintln(stderr, "NOTE: Using mock executor.")
@@ -226,7 +238,7 @@ func runCommand(args []string, stdout, stderr io.Writer) int {
 				APIKeyEnv: wf.Config.Provider.APIKeyEnv,
 			}
 		}
-		sdkExec, sdkErr := executor.NewCopilotSDKExecutor(provider)
+		sdkExec, sdkErr := executor.NewCopilotSDKExecutor(provider, cwd, extraDirs...)
 		if sdkErr != nil {
 			fmt.Fprintf(stderr, "error: %v\n", sdkErr)
 			return 1
@@ -249,6 +261,7 @@ func runCommand(args []string, stdout, stderr io.Writer) int {
 		Truncate:     wf.Output.Truncate,
 		DefaultModel: wf.Config.Model,
 		Streaming:    *verbose || *stream, // Enable streaming for verbose or stream mode
+		WorkingDir:   cwd,
 	}
 
 	// Wire up progress handler for verbose and/or streaming mode.

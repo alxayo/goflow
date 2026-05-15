@@ -45,6 +45,11 @@ type StepExecutor struct {
 	// OnProgress is called for each significant session event when Streaming
 	// is enabled. Use this for real-time CLI output or audit logging.
 	OnProgress ProgressHandler
+
+	// WorkingDir is the directory that sessions use as their workspace root.
+	// Tool operations (bash, file access) are scoped to this directory.
+	// If empty, the SDK inherits the CLI process CWD.
+	WorkingDir string
 }
 
 // Execute runs a single step and returns its result.
@@ -140,6 +145,7 @@ func (se *StepExecutor) Execute(
 		Streaming:    se.Streaming,
 		OnProgress:   progressHandler,
 		StepID:       step.ID,
+		WorkingDir:   se.WorkingDir,
 	}
 
 	// 5. Create SDK session.

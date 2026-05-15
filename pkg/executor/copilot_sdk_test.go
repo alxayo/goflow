@@ -14,7 +14,7 @@ func TestNewCopilotSDKExecutor_NilProvider(t *testing.T) {
 	// client. If copilot CLI is not on PATH, it will fail with a clear
 	// error about not finding the CLI — but it should NOT fail on provider
 	// validation.
-	_, err := NewCopilotSDKExecutor(nil)
+	_, err := NewCopilotSDKExecutor(nil, "")
 	if err != nil {
 		// Expected in CI/test environments where copilot CLI isn't installed.
 		// The important thing is that it didn't fail on provider validation.
@@ -35,7 +35,7 @@ func TestNewCopilotSDKExecutor_MissingAPIKey(t *testing.T) {
 		Type:      "openai",
 		BaseURL:   "https://api.openai.com/v1",
 		APIKeyEnv: envVar,
-	})
+	}, "")
 	if err == nil {
 		t.Fatal("expected error for missing API key env var, got nil")
 	}
@@ -51,7 +51,7 @@ func TestNewCopilotSDKExecutor_EmptyProviderType(t *testing.T) {
 		Type:      "",
 		BaseURL:   "https://api.openai.com/v1",
 		APIKeyEnv: "OPENAI_API_KEY",
-	})
+	}, "")
 	if err == nil {
 		t.Fatal("expected error for empty provider type, got nil")
 	}
@@ -70,7 +70,7 @@ func TestNewCopilotSDKExecutor_ValidBYOK(t *testing.T) {
 		Type:      "openai",
 		BaseURL:   "https://api.openai.com/v1",
 		APIKeyEnv: envVar,
-	})
+	}, "")
 	if err != nil {
 		// If the error is about the CLI not being found, that's OK — the
 		// BYOK validation passed. We're testing validation, not CLI availability.
@@ -87,7 +87,7 @@ func TestNewCopilotSDKExecutor_OllamaNoAPIKey(t *testing.T) {
 		Type:      "ollama",
 		BaseURL:   "http://localhost:11434",
 		APIKeyEnv: "", // No API key needed for local Ollama
-	})
+	}, "")
 	if err != nil {
 		// CLI not found is OK; BYOK validation errors are not.
 		if containsAny(err.Error(), "BYOK", "provider type", "env var") {

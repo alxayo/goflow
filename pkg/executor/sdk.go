@@ -56,6 +56,11 @@ type SessionConfig struct {
 	// instructions, and hooks are added to CLI discovery for this session.
 	ExtraDirs []string
 
+	// WorkingDir is the working directory for the session. Tool operations
+	// (bash, file access) are scoped relative to this directory. If empty,
+	// the SDK inherits the CLI process CWD.
+	WorkingDir string
+
 	// Interactive enables the ask_user tool for this session, allowing the
 	// LLM to pause execution and request clarification from the user.
 	// When false (default), the CLI runs with --no-ask-user, suppressing

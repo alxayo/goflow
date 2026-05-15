@@ -3,7 +3,7 @@ module github.com/alex-workflow-runner/workflow-runner
 go 1.25.1
 
 require (
-	github.com/github/copilot-sdk/go v0.2.0 // indirect
+	github.com/github/copilot-sdk/go v0.3.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/google/jsonschema-go v0.4.2 // indirect
