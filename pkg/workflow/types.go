@@ -153,7 +153,7 @@ type StepResult struct {
 // handler is wired up so that interactive steps can actually prompt the user.
 // It does NOT make all unset steps interactive — only config.interactive: true
 // in the workflow does that. This means a step without an explicit interactive
-// setting runs non-interactively unless the workflow itself opts all steps in.
+// setting runs non-interactively unless the workflow or the CLI flag opts in.
 //
 // To make a specific step interactive regardless of global settings, set
 // interactive: true on the step. To exclude a step even when the workflow
@@ -163,10 +163,8 @@ func IsInteractive(step Step, wfInteractive, cliInteractive bool) bool {
 	if step.Interactive != nil {
 		return *step.Interactive
 	}
-	// Fall back to workflow-level config only.
-	// The CLI flag is not used here; it only controls whether the handler
-	// is wired up (see main.go), not the per-step default.
-	return wfInteractive
+	// Fall back to workflow-level config or CLI --interactive flag.
+	return wfInteractive || cliInteractive
 }
 
 // BoolPtr returns a pointer to the given bool value.

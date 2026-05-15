@@ -24,14 +24,13 @@ func TestIsInteractive(t *testing.T) {
 			cliInteractive: false,
 			want:           false,
 		},
-		// CLI flag alone does NOT enable interactivity for unset steps.
-		// The flag only wires up the handler; steps must opt in explicitly.
+		// CLI flag alone enables interactivity for unset steps.
 		{
-			name:           "CLI flag alone does not enable unset step",
+			name:           "CLI flag enables",
 			stepValue:      nil,
 			wfInteractive:  false,
 			cliInteractive: true,
-			want:           false,
+			want:           true,
 		},
 		// Workflow config alone enables interactivity for unset steps.
 		{
@@ -41,9 +40,9 @@ func TestIsInteractive(t *testing.T) {
 			cliInteractive: false,
 			want:           true,
 		},
-		// CLI + workflow config: workflow config drives the unset step, CLI is irrelevant here.
+		// Both CLI and workflow config enable — still true.
 		{
-			name:           "workflow config enables even with CLI flag",
+			name:           "both CLI and workflow enable",
 			stepValue:      nil,
 			wfInteractive:  true,
 			cliInteractive: true,

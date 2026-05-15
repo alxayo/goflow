@@ -14,9 +14,8 @@ import (
 	"github.com/alex-workflow-runner/workflow-runner/pkg/workflow"
 )
 
-// TestRun_InteractiveStep verifies that the CLI --interactive flag alone does NOT
-// make steps interactive when they have no explicit interactive setting.
-// The flag only enables the mechanism (wires the handler); per-step opt-in is required.
+// TestRun_InteractiveStep verifies that the CLI --interactive flag enables
+// interactivity for steps that have no explicit interactive setting.
 func TestRun_InteractiveStep(t *testing.T) {
 	mock := &executor.MockSessionExecutor{
 		DefaultResponse: "output",
@@ -46,10 +45,10 @@ func TestRun_InteractiveStep(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// CLIInteractive=true but the step has no interactive override, so it should
-	// NOT be interactive. The CLI flag is a mechanism gate, not a global override.
-	if se.Interactive {
-		t.Error("expected executor.Interactive=false: CLI flag alone should not make unset steps interactive")
+	// CLIInteractive=true and the step has no interactive override, so it should
+	// be interactive — the CLI flag acts as a global opt-in for unset steps.
+	if !se.Interactive {
+		t.Error("expected executor.Interactive=true: CLI flag should enable unset steps")
 	}
 }
 
