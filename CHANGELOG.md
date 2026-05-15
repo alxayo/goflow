@@ -7,6 +7,34 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.2.1] — 2026-05-15
+
+### Fixed
+
+- **Bash tool execution in SDK mode** — Upgraded Copilot SDK from v0.2.0 to
+  v0.3.0 to fix the "unexpected user permission response" error that silently
+  broke all bash/view/skill tool calls in headless mode. Root cause: the CLI
+  updated its permission protocol to only accept `approve-once` as the approval
+  kind; SDK v0.2.0 was sending the old `approved` value, which the CLI treated
+  as invalid — denying every tool call.
+- **Interactive mode** — CLI `--interactive` flag now correctly enables
+  interactivity for steps that do not explicitly set `interactive: false`.
+
+### Changed
+
+- **Copilot SDK v0.3.0 API migration** — Adapted to breaking changes in the
+  SDK's event system: `SessionEventData` is now a typed interface requiring a
+  type switch (previously a flat struct with pointer fields).
+  `MCPServerConfig` is now an interface with concrete `MCPStdioServerConfig`
+  and `MCPHTTPServerConfig` types.
+- **Working directory support** — The executor now passes the process CWD and
+  any absolute directory paths from workflow inputs to the CLI via `--add-dir`
+  flags and the session's `WorkingDirectory` parameter, scoping file access
+  for tool operations.
+- Removed debug logging that was added during the permission investigation.
+
+---
+
 ## [0.2.0] — 2026-03-30
 
 ### Added
